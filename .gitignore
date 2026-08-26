@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+*.apk
+.DS_Store
+.env
+.vite/
+*.log
+.idea/
+.vscode/
