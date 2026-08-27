@@ -10,7 +10,7 @@
  * most one request ever, and the cache keeps working with the radio off.
  */
 
-const CACHE_KEY = "bulkclock.photos.v1";
+const CACHE_KEY = "bulkclock.photos.v2";
 const ENDPOINT = "https://en.wikipedia.org/w/api.php";
 
 /** Food-name keyword → Wikipedia article title. Longest match wins. */
@@ -126,9 +126,28 @@ export function clearPhotoCache() {
   } catch { /* ignore */ }
 }
 
+/**
+ * A cache entry is `{ u, l }`: the remote URL, and the id of a local copy once
+ * one has been saved. The local copy is what makes the photos survive going
+ * offline — a URL cache still needs the network to render anything.
+ */
 export function cachedPhoto(title) {
   const hit = readCache()[title];
-  return hit && hit !== "0" ? hit : null;
+  if (!hit || hit === "0") return null;
+  if (typeof hit === "string") return hit;      // v1 entry, still usable
+  return hit.u || null;
+}
+
+export function cachedLocalId(title) {
+  const hit = readCache()[title];
+  return hit && typeof hit === "object" ? hit.l || null : null;
+}
+
+function setEntry(title, patch) {
+  const c = readCache();
+  const existing = typeof c[title] === "object" ? c[title] : { u: typeof c[title] === "string" ? c[title] : null, l: null };
+  c[title] = { ...existing, ...patch };
+  writeCache();
 }
 
 /* ── fetching ────────────────────────────────────────── */
@@ -148,7 +167,7 @@ export function onPhoto(fn) {
  */
 export function fetchPhoto(title, size = 320) {
   const c = readCache();
-  if (title in c) return Promise.resolve(c[title] === "0" ? null : c[title]);
+  if (title in c) return Promise.resolve(cachedPhoto(title));
   if (inflight.has(title)) return inflight.get(title);
   if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve(null);
 
@@ -162,8 +181,11 @@ export function fetchPhoto(title, size = 320) {
       const pages = data?.query?.pages || {};
       const first = Object.values(pages)[0];
       const src = first?.thumbnail?.source || null;
-      cache[title] = src || "0";     // "0" is a negative hit: never ask again
-      writeCache();
+      if (src) setEntry(title, { u: src });
+      else {
+        cache[title] = "0";          // "0" is a negative hit: never ask again
+        writeCache();
+      }
       listeners.forEach(fn => fn(title, src));
       return src;
     })
@@ -172,4 +194,80 @@ export function fetchPhoto(title, size = 320) {
 
   inflight.set(title, p);
   return p;
+}
+
+
+/* ── keeping them offline ────────────────────────────────── */
+
+import { Capacitor } from "@capacitor/core";
+
+const isNative = () => Capacitor.isNativePlatform();
+
+/**
+ * Copy a fetched photo onto the device so it renders with the radio off.
+ *
+ * Runs once per food, in the background, and fails quietly — a food whose photo
+ * could not be saved simply falls back to its gradient tile, which is what it
+ * showed before the photo arrived anyway.
+ */
+export async function cacheLocally(title, url) {
+  if (!isNative() || !url) return null;
+  if (cachedLocalId(title)) return cachedLocalId(title);
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (blob.size > 400_000) return null;      // a thumbnail this big is a mistake
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    const { saveImage, downscale } = await import("./images.js");
+    const small = await downscale(dataUrl, 320, 0.8).catch(() => dataUrl);
+    const id = await saveImage(small, `wiki_${slug(title)}`);
+    if (id) setEntry(title, { l: id });
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40);
+
+/**
+ * Fetch and store photos for a list of foods in one go, so the database is
+ * illustrated before the user is somewhere without signal. Reports progress so
+ * the UI can show it rather than appearing to hang.
+ */
+export async function downloadAllPhotos(foods, onProgress) {
+  const titles = [...new Set(foods.map(titleFor).filter(Boolean))];
+  let done = 0;
+  let saved = 0;
+
+  for (const title of titles) {
+    // Deliberately serial: a hundred parallel requests to Wikipedia is rude and
+    // gets rate-limited anyway.
+    const url = cachedPhoto(title) || await fetchPhoto(title);
+    if (url && !cachedLocalId(title)) {
+      if (await cacheLocally(title, url)) saved++;
+    } else if (url) {
+      saved++;
+    }
+    done++;
+    onProgress?.({ done, total: titles.length, saved });
+  }
+
+  return { total: titles.length, saved };
+}
+
+/** How much of the database already has a photo stored on the device. */
+export function localPhotoCoverage(foods) {
+  const titles = [...new Set(foods.map(titleFor).filter(Boolean))];
+  const local = titles.filter(t => cachedLocalId(t)).length;
+  return { titles: titles.length, local };
 }

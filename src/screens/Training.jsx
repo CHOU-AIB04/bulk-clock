@@ -7,15 +7,19 @@ import {
 import { TEMPLATES, searchExercises, MUSCLES, emptyProgram } from "../data/program.js";
 import {
   useStore, todayKey, addDays, parseKey, weekOfBlock, weekdayOf,
-  lastSessionFor, workoutFor, setProgram, setProgramDay,
+  lastSessionFor, workoutFor, plannedSessionFor, phaseFor, blockConfig, setBlockConfig,
+  setProgram, setProgramDay,
   sessionTimeFor, setSessionOverride, getState,
   setsFor, setLiftField, toggleSetDone, setSetType, addSet, removeSet,
   setSessionNote, startSession, endSession, sessionFor, sessionDoneSets
 } from "../lib/store.js";
 import { scheduleTodaySession, isNative } from "../lib/notify.js";
 import { checkPRs, prLabel, suggestLoad, parseRepRange, tonnage, bestSet, epley } from "../lib/lifting.js";
+import { notesFor } from "../data/exerciseNotes.js";
+import { tapLight, celebrate, alarm } from "../lib/haptics.js";
 import PlateCalculator from "../components/PlateCalculator.jsx";
 import ExerciseHistory from "../components/ExerciseHistory.jsx";
+import { t } from "../lib/i18n.js";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -45,7 +49,7 @@ function RestTimer({ autoKey, defaultLen = 150 }) {
         if (v === null) return null;
         if (v <= 1) {
           clearInterval(ref.current);
-          if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+          alarm();
           return 0;
         }
         return v - 1;
@@ -72,10 +76,18 @@ function RestTimer({ autoKey, defaultLen = 150 }) {
     <div className="card-sm" style={{ marginTop: 14 }}>
       <div className="row">
         <Timer size={20} style={{ color: left === 0 ? "var(--accent-text)" : "var(--accent-text)" }} />
-        <span className="stat grow" style={{ color: left === 0 ? "var(--accent-text)" : undefined }}>
+        <span
+          className="stat grow" style={{ color: left === 0 ? "var(--accent-text)" : undefined }}
+          role="timer" aria-live={left === 0 ? "assertive" : "off"}
+          aria-label={left === 0 ? "Rest over" : `${Math.floor(shown / 60)} minutes ${shown % 60} seconds remaining`}
+        >
           {left === 0 ? "GO" : `${Math.floor(shown / 60)}:${pad(shown % 60)}`}
         </span>
-        <button className="btn btn-sm btn-quiet" disabled={running} onClick={() => setLen(l => (l === 150 ? 90 : l === 90 ? 180 : l === 180 ? 240 : 150))}>
+        <button
+          className="btn btn-sm btn-quiet" disabled={running}
+          aria-label={`Rest length ${len} seconds. Tap to change.`}
+          onClick={() => setLen(l => (l === 150 ? 90 : l === 90 ? 180 : l === 180 ? 240 : 150))}
+        >
           {len}s
         </button>
         <button className="btn btn-sm btn-primary" onClick={toggle}>
@@ -92,7 +104,7 @@ function RestTimer({ autoKey, defaultLen = 150 }) {
 
 /* ── one exercise, with every set ─────────────────────── */
 
-function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory }) {
+function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory, phase }) {
   const { name, sets: prescribedSets, reps } = prescribed;
   useStore(s => s.lifts[dateKey]);
   const sets = setsFor(dateKey, name);
@@ -109,6 +121,15 @@ function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory }) {
   const suggestion = useMemo(() => suggestLoad(name, reps, dateKey), [name, reps, dateKey, prev?.key]);
   const pr = useMemo(() => checkPRs(name, dateKey), [name, dateKey, sets]);
   const badge = prLabel(pr);
+
+  // Buzz once per record, not on every re-render that still shows the badge.
+  const celebrated = useRef(null);
+  useEffect(() => {
+    if (badge && celebrated.current !== badge) {
+      celebrated.current = badge;
+      celebrate();
+    }
+  }, [badge]);
   const range = parseRepRange(reps);
 
   const done = sets.filter(s => s.done && s.type !== "warmup").length;
@@ -131,6 +152,13 @@ function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory }) {
         </button>
         <span className="caps neon">{target} × {reps}</span>
       </div>
+      {prescribed.adjusted && (
+        <div className="dim" style={{ fontSize: 11.5, marginTop: 4 }}>
+          {phase?.deload
+            ? `Deload — halved from ${prescribed.baseSets} sets, same weights`
+            : `+${prescribed.sets - prescribed.baseSets} set on your programmed ${prescribed.baseSets}`}
+        </div>
+      )}
 
       <div className="row" style={{ marginTop: 6, gap: 8 }}>
         <span className="dim tnum" style={{ fontSize: 12 }}>
@@ -172,7 +200,10 @@ function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory }) {
             <button
               className="tickbox" aria-pressed={s.done}
               aria-label={`Mark set ${i + 1} of ${name} ${s.done ? "not done" : "done"}`}
-              onClick={() => { toggleSetDone(dateKey, name, i); if (!s.done) onRested(); }}
+              onClick={() => {
+                toggleSetDone(dateKey, name, i);
+                if (!s.done) { tapLight(); onRested(); }
+              }}
             >
               <Check size={16} strokeWidth={3} />
             </button>
@@ -215,10 +246,10 @@ function ExerciseCard({ dateKey, prescribed, onRested, onPlates, onHistory }) {
 
       <div className="row" style={{ marginTop: 10, gap: 8 }}>
         <button className="btn btn-sm btn-quiet" onClick={() => addSet(dateKey, name, "work")}>
-          <Plus size={14} /> Set
+          <Plus size={14} /> {t("training.addSet")}
         </button>
         <button className="btn btn-sm btn-quiet" onClick={() => addSet(dateKey, name, "warmup")}>
-          <Plus size={14} /> Warm-up
+          <Plus size={14} /> {t("training.addWarmup")}
         </button>
         <span className="caps faint" style={{ marginLeft: "auto", fontSize: 9.5 }}>
           {done} / {target} done{best ? ` · e1RM ${r1(best.e1rm)} kg` : ""}
@@ -265,16 +296,22 @@ function ExercisePicker({ onPick, onBack }) {
         </button>
       )}
 
-      {results.map(e => (
-        <button key={e.name} className="list-row" onClick={() => onPick(e)}>
-          <span className="ico"><Dumbbell size={19} /></span>
-          <span className="grow">
-            <span className="t">{e.name}</span>
-            <span className="d">{e.muscle} · {e.equipment}</span>
-          </span>
-          <Plus size={18} style={{ color: "var(--accent-text)" }} />
-        </button>
-      ))}
+      {results.map(e => {
+        const note = notesFor(e.name);
+        return (
+          <button key={e.name} className="list-row" onClick={() => onPick(e)}>
+            <span className="ico"><Dumbbell size={19} /></span>
+            <span className="grow">
+              <span className="t">{e.name}</span>
+              <span className="d">{e.muscle} · {e.equipment}</span>
+              {note && (
+                <span className="d" style={{ marginTop: 4, opacity: 0.85 }}>{note.cue}</span>
+              )}
+            </span>
+            <Plus size={18} style={{ color: "var(--accent-text)", flex: "0 0 auto" }} />
+          </button>
+        );
+      })}
     </>
   );
 }
@@ -360,7 +397,7 @@ function DayEditor({ weekday, day, defaultTime, onSave, onDelete, onBack }) {
       ))}
 
       <button className="btn btn-secondary btn-wide" style={{ marginTop: 8 }} onClick={() => setPicking(true)}>
-        <Plus size={17} /> Add exercise
+        <Plus size={17} /> {t("training.addExercise")}
       </button>
 
       <div className="row" style={{ marginTop: 18, gap: 10 }}>
@@ -444,7 +481,7 @@ function ProgramEditor({ onClose }) {
   return wrap(
     <>
       <div className="sheet-h">
-        <h3 className="h3">My programme</h3>
+        <h3 className="h3">{t("training.myProgramme")}</h3>
         <button className="btn-ghost" onClick={onClose} aria-label="Close"><X size={22} /></button>
       </div>
 
@@ -458,7 +495,7 @@ function ProgramEditor({ onClose }) {
       </label>
 
       <div className="sect-h">
-        <h2 className="h4">Your week</h2>
+        <h2 className="h4">{t("training.yourWeek")}</h2>
         <span className="caps faint">{count} training {count === 1 ? "day" : "days"}</span>
       </div>
 
@@ -484,8 +521,10 @@ function ProgramEditor({ onClose }) {
         );
       })}
 
+      <BlockSettings />
+
       <button className="btn btn-secondary btn-wide" style={{ marginTop: 14 }} onClick={() => setShowTemplates(true)}>
-        <LayoutTemplate size={17} /> Start from a template
+        <LayoutTemplate size={17} /> {t("training.template")}
       </button>
       <button
         className="btn btn-ghost btn-wide" style={{ marginTop: 6 }}
@@ -494,6 +533,63 @@ function ProgramEditor({ onClose }) {
         Clear the whole week
       </button>
     </>
+  );
+}
+
+/**
+ * Volume periodisation across weeks.
+ *
+ * Double progression already handles load inside a session; this is the other
+ * axis. Volume climbs for a few weeks, then a deload drops it so fatigue clears
+ * and the next cycle starts recovered. Off by default, because a beginner
+ * progressing linearly does not need it yet.
+ */
+function BlockSettings() {
+  const block = useStore(s => s.program.block) || {};
+  const cfg = blockConfig();
+  const phase = phaseFor();
+
+  return (
+    <div className="card-sm" style={{ marginTop: 20 }}>
+      <div className="toggle" style={{ padding: 0, borderBottom: "none" }}>
+        <div className="grow">
+          <div style={{ fontWeight: 600, fontSize: 15 }}>Build up and deload</div>
+          <div className="dim" style={{ fontSize: 12.5, marginTop: 3 }}>
+            {cfg.enabled
+              ? `Currently ${phase.name.toLowerCase()} — week ${phase.posInCycle} of ${phase.cycle}`
+              : "Your programmed sets run unchanged every week"}
+          </div>
+        </div>
+        <button
+          className="sw" role="switch" aria-checked={!!cfg.enabled} aria-label="Build up and deload"
+          onClick={() => setBlockConfig({ enabled: !cfg.enabled })}
+        ><i /></button>
+      </div>
+
+      {cfg.enabled && (
+        <>
+          <div style={{ marginTop: 14 }}>
+            <span className="lab">Cycle length</span>
+            <div className="chips" style={{ marginTop: 8 }}>
+              {[4, 5, 6, 7].map(w => (
+                <button
+                  key={w} className="chip" aria-pressed={cfg.cycleWeeks === w}
+                  onClick={() => setBlockConfig({ cycleWeeks: w })}
+                >
+                  {w} weeks
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="note" style={{ marginTop: 14 }}>
+            Week 1 runs your programmed sets. Each week after adds one set per exercise, up to two
+            extra. The last week of every cycle halves the sets at the same weights — that is the
+            deload, and it is where the previous weeks actually get absorbed.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -519,7 +615,8 @@ export default function Training() {
 
   const week = weekOfBlock(dateKey);
   const wd = weekdayOf(dateKey);
-  const wo = workoutFor(dateKey);
+  const wo = plannedSessionFor(dateKey);
+  const phase = wo?.phase;
   const override = useStore(s => s.sessionOverride?.[dateKey]);
   const defaultTime = useStore(s => s.settings.trainingTime);
   const plannedTime = wo?.time || defaultTime;
@@ -575,15 +672,22 @@ export default function Training() {
           {wo && <span className="badge" style={{ marginLeft: "auto" }}>{doneSets} / {totalSets} sets</span>}
         </div>
         <div className="h3">{wo ? wo.name : `${DAYS[wd - 1]} off`}</div>
+        {phase && (
+          <div className="badge" style={{ marginTop: 10 }}>
+            {phase.name} · week {phase.posInCycle} of {phase.cycle}
+          </div>
+        )}
         <p className="dim" style={{ fontSize: 14, marginTop: 8, marginBottom: 0 }}>
           {wo
-            ? "Rest 2–3 min on compounds, 60–90 s on isolation. Last set of each exercise goes close to failure."
+            ? phase
+              ? phase.note
+              : "Rest 2–3 min on compounds, 60–90 s on isolation. Last set of each exercise goes close to failure."
             : anyDays
               ? "No session today. Eat the full target anyway — recovery is where the muscle gets built."
               : "Your week is empty. Build your own split, or load a template and edit it."}
         </p>
         <button className="btn btn-secondary btn-wide" style={{ marginTop: 16 }} onClick={() => setEditing(true)}>
-          <Pencil size={16} /> {anyDays ? "Edit my programme" : "Build my programme"}
+          <Pencil size={16} /> {anyDays ? t("training.editProgramme") : t("training.buildProgramme")}
         </button>
         {wo && totalSets > 0 && (
           <div className="bar" style={{ marginTop: 14 }}>
@@ -658,7 +762,7 @@ export default function Training() {
       {wo && (
         <div className="sect">
           <div className="sect-h">
-            <h2 className="h3">Exercises</h2>
+            <h2 className="h3">{t("training.exercises")}</h2>
             <span className="caps faint">{wo.ex.length} movements</span>
           </div>
 
@@ -667,6 +771,7 @@ export default function Training() {
               key={e.name}
               dateKey={dateKey}
               prescribed={e}
+              phase={phase}
               onRested={() => setRestKey(k => k + 1)}
               onPlates={w => setPlates(w)}
               onHistory={name => setHistory(name)}
@@ -693,7 +798,7 @@ export default function Training() {
 
       {!wo && anyDays && (
         <div className="sect">
-          <div className="sect-h"><h2 className="h3">Your week</h2></div>
+          <div className="sect-h"><h2 className="h3">{t("training.yourWeek")}</h2></div>
           {[1, 2, 3, 4, 5, 6, 7].map(d => {
             const day = program.days?.[d];
             return (

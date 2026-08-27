@@ -235,3 +235,79 @@ Calorie and macro figures are general nutrition information, and the Coach rules
 you're healthy and training normally. If something feels wrong — persistent fatigue,
 unexplained weight change, pain that isn't soreness — that's a conversation with a doctor,
 not an app.
+
+---
+
+## Running it locally
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm run build      # writes dist/
+npm test           # 74 tests over the calculations
+npm run clean      # clears Vite's caches and leftover temp files
+```
+
+---
+
+## If `npm run dev` fails with EPERM
+
+```
+Error: EPERM: operation not permitted, rmdir
+'…\bulkclock\node_modules\.vite\deps'
+```
+
+**This is OneDrive, not Vite.**
+
+Vite rebuilds its dependency cache by writing a fresh `node_modules/.vite/deps_temp_*`,
+deleting the old `deps`, and renaming the new one into place. OneDrive starts uploading files
+the instant they appear, and while it holds a handle on one, Windows refuses the delete. Vite
+treats that as fatal and the dev server never starts.
+
+The same mechanism produces the pile of `vite.config.js.timestamp-*.mjs` files in the project
+root. Vite writes one every time it loads the config and deletes it a moment later — when that
+delete fails, the file stays. They are harmless, just noise.
+
+### The quick fix
+
+```bash
+npm run clean
+npm run dev
+```
+
+`vite.config.js` now keeps Vite's cache in the OS temp directory rather than
+`node_modules/.vite`, so OneDrive cannot lock it. That alone resolves the EPERM.
+
+### The proper fix: get the project out of OneDrive
+
+Source code — and `node_modules` in particular — does not belong in a synced folder. It is
+tens of thousands of small files being continuously uploaded, which is slow, burns your
+storage quota, and causes exactly this class of file-locking failure. Move it:
+
+```powershell
+# in PowerShell
+robocopy "$env:USERPROFILE\OneDrive\Documents\Claude\Projects\Chouaib Profile\bulk-clock2\bulkclock" `
+         "C:\dev\bulkclock" /E /XD node_modules dist .vite
+cd C:\dev\bulkclock
+npm install
+npm run dev
+```
+
+`/XD node_modules dist .vite` skips the folders worth rebuilding rather than copying. Once it
+works from `C:\dev`, delete the OneDrive copy.
+
+If you would rather keep it where it is, exclude the folder from syncing:
+**OneDrive → Settings → Account → Choose folders**, and untick this project.
+
+### Still stuck?
+
+Something has a file open. In order:
+
+1. Close every terminal running `vite`, and close VS Code.
+2. Pause OneDrive from the taskbar (Pause syncing → 2 hours).
+3. `npm run clean`
+4. `npm run dev`
+
+If it persists, Windows Defender real-time scanning can hold files too — add the project
+folder to its exclusions.
+

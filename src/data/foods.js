@@ -232,6 +232,68 @@ casein|Casein protein powder|Supplements|365|72|9|3|scoop:30
 mass_gainer|Mass gainer powder|Supplements|380|18|68|4|scoop:75
 creatine|Creatine monohydrate|Supplements|0|0|0|0|scoop:5
 protein_bar|Protein bar|Supplements|360|30|38|9|bar:60
+tagine_lamb_prune|Tagine, lamb with prunes and almonds|Moroccan|196|13.5|13.2|10.4|plate:350
+tagine_chicken_olive|Tagine, chicken with olives and preserved lemon|Moroccan|152|14.8|4.1|8.2|plate:350
+tagine_vegetable|Tagine, vegetable|Moroccan|84|2.6|11.4|3.3|plate:350
+tagine_meatball|Tagine, kefta with tomato|Moroccan|178|13|5.2|11.8|plate:320
+couscous_seven_veg|Couscous, seven vegetables with lamb|Moroccan|141|7.4|18.6|4.2|plate:400
+couscous_chicken|Couscous with chicken and vegetables|Moroccan|136|8.6|18.2|3.1|plate:400
+couscous_tfaya|Couscous tfaya, onion and raisin|Moroccan|168|5.2|27.4|4.6|plate:380
+harira_ramadan|Harira, thick Ramadan style|Moroccan|76|4.1|10.8|1.9|bowl:300
+bissara_thick|Bissara, thick with olive oil|Moroccan|132|7|17|4.2|bowl:250
+loubia_marocaine|Loubia, white beans in tomato|Moroccan|118|6.4|17.2|2.6|bowl:280
+adas|Lentil stew, Moroccan style|Moroccan|112|6.8|16.4|2.2|bowl:280
+kefta_tagine_plain|Kefta, grilled minced beef patty|Moroccan|241|19.6|1.8|17.4|patty:80
+mrouzia|Mrouzia, lamb with honey and raisins|Moroccan|258|14.2|18.6|14.1|plate:300
+tanjia_marrakchia|Tanjia, slow-cooked beef with preserved lemon|Moroccan|221|21.4|1.2|14.8|portion:250
+seffa_medfouna|Seffa medfouna, sweet couscous with chicken|Moroccan|187|8.4|26.2|5.8|plate:300
+rfissa_trid|Rfissa, chicken with trid and fenugreek|Moroccan|172|11.8|17.4|6.4|plate:350
+harcha_semolina|Harcha, semolina pan bread|Moroccan|372|6.4|48.2|16.8|piece:70
+msemen_plain|Msemen, plain folded flatbread|Moroccan|318|6.2|45.6|12.1|piece:80
+msemen_honey|Msemen with honey and butter|Moroccan|402|5.4|52.8|19.4|piece:95
+baghrir_honey|Baghrir with honey and butter|Moroccan|298|5.1|46.2|10.4|piece:60
+batbout_stuffed|Batbout, stuffed with kefta|Moroccan|248|13.6|28.4|9.2|piece:120
+khobz_dyal_dar|Khobz dyal dar, home-baked round bread|Moroccan|262|8.4|51.2|2.1|round:250
+zaalouk_aubergine|Zaalouk, aubergine and tomato salad|Moroccan|96|1.6|7.2|6.9|portion:150
+taktouka_pepper|Taktouka, pepper and tomato salad|Moroccan|82|1.4|6.8|5.6|portion:150
+bakoula_mallow|Bakoula, cooked mallow greens|Moroccan|104|3.2|6.4|7.4|portion:150
+salade_zaalouk_carrot|Carrot salad, cumin and orange|Moroccan|74|0.9|10.2|3.4|portion:150
+briouat_cheese|Briouat, cheese|Moroccan|312|9.8|24.6|19.4|piece:35
+briouat_almond|Briouat, almond and honey|Moroccan|422|8.2|43.1|24.6|piece:35
+pastilla_seafood|Pastilla, seafood|Moroccan|228|12.4|20.8|10.9|slice:180
+maakouda_potato|Maakouda, fried potato patty|Moroccan|221|3.8|24.6|11.8|piece:50
+sardine_chermoula|Sardines, chermoula-stuffed and fried|Moroccan|246|21.4|4.2|15.8|fish:60
+hout_mchermel|White fish, chermoula baked|Moroccan|138|21.8|3.1|4.2|fillet:180
+merguez_tagine|Merguez in tomato sauce|Moroccan|268|15.4|4.8|20.6|portion:150
+babouche|Babbouche, snail broth|Moroccan|68|12.4|2.1|1.1|bowl:250
+tahin_soup|Chorba with vermicelli|Moroccan|64|3.2|9.4|1.4|bowl:280
+harira_light|Harira, light everyday|Moroccan|58|3.1|8.2|1.4|bowl:300
+sfenj_plain|Sfenj, Moroccan doughnut|Moroccan|352|5.8|42.4|17.6|piece:60
+chebakia_honey|Chebakia, sesame and honey|Moroccan|441|5.2|58.4|20.8|piece:25
+ghriba_coconut|Ghriba, coconut|Moroccan|432|6.1|48.2|24.1|piece:30
+ghriba_almond|Ghriba, almond|Moroccan|468|9.4|41.2|30.2|piece:30
+kaab_ghzal_almond|Kaab el ghzal, almond crescent|Moroccan|412|8.2|48.6|21.4|piece:35
+mhancha|Mhancha, coiled almond pastry|Moroccan|438|8.8|44.2|25.6|slice:60
+sellou|Sellou, roasted flour and almond paste|Moroccan|528|10.4|46.8|33.2|tbsp:20
+amlou_argan|Amlou, argan and almond spread|Moroccan|598|13.2|18.4|52.6|tbsp:18
+raib_dessert|Raib, set milk dessert|Moroccan|108|3.2|14.6|4.1|pot:125
+mhalabia|Mhalabia, milk pudding|Moroccan|132|3.4|19.2|4.6|bowl:150
+thé_menthe_sucre|Mint tea, sweetened Moroccan style|Drinks|38|0|9.6|0|glass:120
+thé_menthe_leger|Mint tea, lightly sweetened|Drinks|18|0|4.5|0|glass:120
+jus_avocat|Avocado and almond milk shake|Drinks|118|2.4|14.2|5.8|glass:250
+jus_panache|Panaché, mixed fruit juice|Drinks|72|1.2|15.4|0.6|glass:250
+lben_traditional|Lben, traditional buttermilk|Eggs & dairy|42|3.3|4.6|1.1|glass:200
+jben_frais|Jben, fresh white cheese|Eggs & dairy|138|11.4|3.2|9.1|portion:60
+smen_beldi|Smen, aged clarified butter|Fats & oils|876|0.4|0|98.2|tsp:5
+olive_beldi|Olives, Moroccan beldi, cured|Moroccan|168|1.4|4.2|16.4|portion:30
+harissa_paste|Harissa paste|Moroccan|118|3.2|12.4|6.8|tsp:6
+chermoula|Chermoula marinade|Moroccan|186|2.1|5.4|17.8|tbsp:15
+ras_el_hanout|Ras el hanout spice blend|Moroccan|312|11.4|48.2|9.6|tsp:2
+preserved_lemon|Preserved lemon|Moroccan|24|0.7|6.1|0.2|quarter:20
+argan_amlou_honey|Argan oil with honey|Moroccan|642|2.1|24.6|58.4|tbsp:18
+dates_beldi|Dates, Moroccan beldi|Fruit|282|2.4|71.2|0.4|date:8
+figue_barbarie|Prickly pear|Fruit|41|0.7|9.6|0.5|fruit:110
+grenade_juice|Pomegranate juice, fresh|Drinks|54|0.4|13.1|0.3|glass:250
 `.trim();
 
 export const FOODS = RAW.split("\n").map(line => {

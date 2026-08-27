@@ -12,6 +12,9 @@ import AdaptiveTargets from "../components/AdaptiveTargets.jsx";
 import BodyPanel from "../components/BodyPanel.jsx";
 import VolumePanel from "../components/VolumePanel.jsx";
 import WeeklyReview from "../components/WeeklyReview.jsx";
+import CalendarView from "../components/CalendarView.jsx";
+import Achievements from "../components/Achievements.jsx";
+import HistorySearch from "../components/HistorySearch.jsx";
 
 const r0 = n => Math.round(n);
 
@@ -253,10 +256,28 @@ export default function Stats() {
         )}
       </div>
 
+      {/* ── the month ── */}
+      <div className="sect">
+        <div className="sect-h"><h2 className="h3">Calendar</h2></div>
+        <CalendarView />
+      </div>
+
+      {/* ── milestones ── */}
+      <div className="sect">
+        <div className="sect-h"><h2 className="h3">Achievements</h2></div>
+        <Achievements />
+      </div>
+
       {/* ── the body ── */}
       <div className="sect">
         <div className="sect-h"><h2 className="h3">Body</h2></div>
         <BodyPanel />
+      </div>
+
+      {/* ── look anything up ── */}
+      <div className="sect">
+        <div className="sect-h"><h2 className="h3">Search your history</h2></div>
+        <HistorySearch />
       </div>
 
       {/* ── challenges ── */}

@@ -43,6 +43,12 @@ const DEFAULT_STATE = {
   favourites: { foods: [], meals: [] },
   /** measurements[dateKey] = { waist, chest, arm, thigh, hips, neck } in cm */
   measurements: {},
+  /** plan[dateKey][slotId] = [{ id, kind, ref, amount, unit }] — intent, not history. */
+  plan: {},
+  /** Things you take rather than eat: creatine, whey, vitamin D. */
+  supplements: [],
+  /** supplementLog[dateKey] = { [supplementId]: true } */
+  supplementLog: {},
   /** photos[dateKey] = { front, side, back } — image ids, stored on device */
   photos: {},
   /**
@@ -57,6 +63,8 @@ const DEFAULT_STATE = {
   program: DEFAULT_PROGRAM,
   /** One-off "I'm training at a different time today" overrides, by date key. */
   sessionOverride: {},
+  /** reminders[dateKey][eventId] = { snoozedUntil, dismissed } — today only. */
+  reminders: {},
   challenges: [],
   settings: {
     theme: "dark",              // "dark" | "light" | "system"
@@ -79,7 +87,15 @@ const DEFAULT_STATE = {
     dayTypeSwing: 0.15,
     /** Judge the week, not the day. */
     weeklyBudget: false,
-    lastTdeeCheck: null
+    lastTdeeCheck: null,
+    /** Full-screen reminders, and how far ahead of an event they arrive. */
+    fullScreenReminders: true,
+    leadMinutes: 30,
+    snoozeMinutes: 15,
+    notifySupplements: true,
+    lastBackupAt: 0,
+    /** null means "follow the phone" until the user picks one. */
+    language: null
   }
 };
 
@@ -100,7 +116,11 @@ function migrate(parsed) {
       meals: parsed.favourites?.meals || []
     },
     measurements: parsed.measurements || {},
-    photos: parsed.photos || {}
+    photos: parsed.photos || {},
+    reminders: parsed.reminders || {},
+    supplements: parsed.supplements || [],
+    supplementLog: parsed.supplementLog || {},
+    plan: parsed.plan || {}
   };
   // v2 had no editable program — adopt the bundled split as the starting week.
   if (!next.program || !next.program.days) next.program = structuredClone(DEFAULT_PROGRAM);
@@ -351,6 +371,7 @@ export function logFood(key, slot, food, amount, unit) {
   update(d => {
     ensureDay(d, key).entries.push({
       id: uid(),
+      at: Date.now(),
       kind: "food",
       ref: food.id,
       name: food.name,
@@ -372,6 +393,7 @@ export function logMeal(key, slot, meal, portions = 1) {
   update(d => {
     ensureDay(d, key).entries.push({
       id: uid(),
+      at: Date.now(),
       kind: "meal",
       ref: meal.id,
       name: meal.name,
@@ -389,7 +411,7 @@ export function logMeal(key, slot, meal, portions = 1) {
 export function logQuick(key, slot, name, kcal, p, c, f) {
   update(d => {
     ensureDay(d, key).entries.push({
-      id: uid(), kind: "quick", ref: null, name,
+      id: uid(), at: Date.now(), kind: "quick", ref: null, name,
       amount: 1, unit: "entry",
       kcal: +kcal || 0, p: +p || 0, c: +c || 0, f: +f || 0, slot
     });
@@ -1420,4 +1442,402 @@ export function allImageIds() {
   for (const m of state.meals) if (m.photo) ids.push(m.photo);
   for (const day of Object.values(state.photos)) ids.push(...Object.values(day));
   return ids;
+}
+
+/* ── reminder state ──────────────────────────────────────── */
+
+export function reminderStateFor(key, eventId) {
+  return state.reminders?.[key]?.[eventId] || null;
+}
+
+export function snoozeReminder(key, eventId, minutes) {
+  update(d => {
+    if (!d.reminders[key]) d.reminders[key] = {};
+    d.reminders[key][eventId] = { snoozedUntil: Date.now() + minutes * 60000, dismissed: false };
+  });
+}
+
+export function dismissReminder(key, eventId) {
+  update(d => {
+    if (!d.reminders[key]) d.reminders[key] = {};
+    d.reminders[key][eventId] = { snoozedUntil: 0, dismissed: true };
+  });
+}
+
+/** Reminder bookkeeping is only meaningful for today — drop the rest on launch. */
+export function pruneReminders() {
+  const today = todayKey();
+  update(d => {
+    for (const k of Object.keys(d.reminders || {})) if (k !== today) delete d.reminders[k];
+  });
+}
+
+/* ── supplements ─────────────────────────────────────────── */
+
+/**
+ * Things you take rather than eat.
+ *
+ * Kept separate from food on purpose: 5 g of creatine is not a meal, it does not
+ * belong in your calorie total, and burying it in the food log is why people
+ * forget it. It gets its own checklist and its own reminders.
+ */
+export const SUPPLEMENT_PRESETS = [
+  { name: "Creatine monohydrate", dose: 5, unit: "g", note: "Daily, timing irrelevant. Consistency is the whole mechanism." },
+  { name: "Whey protein", dose: 30, unit: "g", note: "Only if you'd otherwise miss your protein target — it's food, not magic." },
+  { name: "Vitamin D3", dose: 2000, unit: "IU", note: "Hard to get from food alone. Take with a meal containing fat." },
+  { name: "Omega-3", dose: 1000, unit: "mg", note: "If you rarely eat oily fish." },
+  { name: "Magnesium", dose: 300, unit: "mg", note: "Evening, if sleep or cramps are an issue." },
+  { name: "Multivitamin", dose: 1, unit: "tablet", note: "Insurance against a low-variety diet, not a substitute for one." },
+  { name: "Caffeine", dose: 200, unit: "mg", note: "Pre-training. Not within six hours of bed." }
+];
+
+export function addSupplement(sup) {
+  const id = `sup_${uid()}`;
+  update(d => {
+    d.supplements.push({
+      id,
+      name: sup.name || "Supplement",
+      dose: sup.dose ?? null,
+      unit: sup.unit || "",
+      time: sup.time || "09:00",
+      days: sup.days || null,            // null = every day
+      note: sup.note || ""
+    });
+    d.supplements.sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+  });
+  return id;
+}
+
+export function updateSupplement(id, patch) {
+  update(d => {
+    const sup = d.supplements.find(x => x.id === id);
+    if (!sup) return;
+    Object.assign(sup, patch);
+    if (patch.time) d.supplements.sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
+  });
+}
+
+export function deleteSupplement(id) {
+  update(d => {
+    d.supplements = d.supplements.filter(x => x.id !== id);
+    for (const day of Object.values(d.supplementLog)) delete day[id];
+  });
+}
+
+/** Only the ones due on this weekday. */
+export function supplementsFor(key = todayKey()) {
+  const wd = weekdayOf(key);
+  return state.supplements.filter(s => !s.days || s.days.includes(wd));
+}
+
+export function supplementTaken(key, id) {
+  return !!state.supplementLog[key]?.[id];
+}
+
+export function toggleSupplement(key, id) {
+  update(d => {
+    if (!d.supplementLog[key]) d.supplementLog[key] = {};
+    if (d.supplementLog[key][id]) delete d.supplementLog[key][id];
+    else d.supplementLog[key][id] = true;
+    if (Object.keys(d.supplementLog[key]).length === 0) delete d.supplementLog[key];
+  });
+}
+
+/** How many of the last `n` days every due supplement was taken. */
+export function supplementStreak(n = 30) {
+  let hit = 0;
+  let seen = 0;
+  for (let i = 0; i < n; i++) {
+    const key = addDays(todayKey(), -i);
+    const due = supplementsFor(key);
+    if (!due.length) continue;
+    seen++;
+    if (due.every(s => supplementTaken(key, s.id))) hit++;
+  }
+  return { hit, seen, pct: seen ? hit / seen : 0 };
+}
+
+/* ── the eating window ───────────────────────────────────── */
+
+/** When an entry actually happened: its timestamp, or its slot's clock time. */
+function entryTime(key, entry) {
+  if (entry.at) return entry.at;
+  const slot = state.profile.slots.find(s => s.id === entry.slot);
+  const [y, m, d] = key.split("-").map(Number);
+  const mins = toMinutes(slot?.time || "12:00");
+  return new Date(y, m - 1, d, Math.floor(mins / 60), mins % 60).getTime();
+}
+
+/**
+ * The gap since your last meal, and how long today's eating window has been.
+ *
+ * Derived entirely from when things were logged — there is no separate fasting
+ * timer to start and stop, because one more thing to remember to press is one
+ * more thing to forget.
+ */
+export function fastingState(now = Date.now()) {
+  const today = todayKey();
+  const yesterday = addDays(today, -1);
+
+  const stamps = [];
+  for (const key of [yesterday, today]) {
+    for (const e of dayEntries(key)) stamps.push(entryTime(key, e));
+  }
+  stamps.sort((a, b) => a - b);
+
+  const past = stamps.filter(t => t <= now);
+  if (!past.length) return { fastingMs: null, windowMs: null, lastMealAt: null, firstMealAt: null, meals: 0 };
+
+  const lastMealAt = past[past.length - 1];
+  const todayStamps = dayEntries(today).map(e => entryTime(today, e)).filter(t => t <= now).sort((a, b) => a - b);
+  const firstMealAt = todayStamps.length ? todayStamps[0] : null;
+
+  return {
+    fastingMs: now - lastMealAt,
+    windowMs: firstMealAt ? lastMealAt - firstMealAt : null,
+    lastMealAt,
+    firstMealAt,
+    meals: todayStamps.length
+  };
+}
+
+/* ── planning ahead ──────────────────────────────────────── */
+
+/**
+ * What you intend to eat, as opposed to what you ate.
+ *
+ * Kept in a separate structure from the log for one reason: a plan that quietly
+ * becomes history is a lie. Nothing counts toward a day's totals until it is
+ * logged, and logging a planned meal is an explicit tap — which also means the
+ * check-in still has something honest to ask about.
+ */
+export function planFor(key) {
+  return state.plan[key] || {};
+}
+
+export function planForSlot(key, slotId) {
+  return state.plan[key]?.[slotId] || [];
+}
+
+export function addToPlan(key, slotId, item) {
+  update(d => {
+    if (!d.plan[key]) d.plan[key] = {};
+    if (!d.plan[key][slotId]) d.plan[key][slotId] = [];
+    d.plan[key][slotId].push({ id: uid(), ...item });
+  });
+}
+
+export function removeFromPlan(key, slotId, id) {
+  update(d => {
+    const list = d.plan[key]?.[slotId];
+    if (!list) return;
+    d.plan[key][slotId] = list.filter(x => x.id !== id);
+    if (!d.plan[key][slotId].length) delete d.plan[key][slotId];
+    if (!Object.keys(d.plan[key] || {}).length) delete d.plan[key];
+  });
+}
+
+export function clearPlan(key) {
+  update(d => { delete d.plan[key]; });
+}
+
+/** Copy one day's plan onto another — a week is usually the same few days twice. */
+export function copyPlan(fromKey, toKey) {
+  const source = state.plan[fromKey];
+  if (!source) return 0;
+  let n = 0;
+  update(d => {
+    d.plan[toKey] = {};
+    for (const [slotId, items] of Object.entries(source)) {
+      d.plan[toKey][slotId] = items.map(i => ({ ...i, id: uid() }));
+      n += items.length;
+    }
+  });
+  return n;
+}
+
+/** Macros a planned item would contribute. */
+export function planItemMacros(item) {
+  if (item.kind === "meal") {
+    const meal = state.meals.find(m => m.id === item.ref);
+    if (!meal) return { ...ZERO };
+    const per = mealServingMacros(meal);
+    const n = item.amount || 1;
+    return { kcal: per.kcal * n, p: per.p * n, c: per.c * n, f: per.f * n };
+  }
+  const food = getFood(item.ref);
+  if (!food) return { ...ZERO };
+  return macrosFor(food, item.amount, item.unit);
+}
+
+export function planTotals(key) {
+  const day = planFor(key);
+  const items = Object.values(day).flat();
+  return sumMacros(items.map(planItemMacros));
+}
+
+export function planItemName(item) {
+  if (item.kind === "meal") return state.meals.find(m => m.id === item.ref)?.name || "Deleted meal";
+  return getFood(item.ref)?.name || "Deleted food";
+}
+
+/**
+ * Turn a plan into a log. Optionally just one slot.
+ * Planned items are removed as they are logged, so nothing gets logged twice.
+ */
+export function logPlanned(key, slotId = null) {
+  const day = planFor(key);
+  const slots = slotId ? [slotId] : Object.keys(day);
+  let n = 0;
+
+  for (const sid of slots) {
+    for (const item of day[sid] || []) {
+      if (item.kind === "meal") {
+        const meal = state.meals.find(m => m.id === item.ref);
+        if (meal) { logMeal(key, sid, meal, item.amount || 1); n++; }
+      } else {
+        const food = getFood(item.ref);
+        if (food) { logFood(key, sid, food, item.amount, item.unit); n++; }
+      }
+    }
+  }
+
+  update(d => {
+    for (const sid of slots) delete d.plan[key]?.[sid];
+    if (d.plan[key] && !Object.keys(d.plan[key]).length) delete d.plan[key];
+  });
+
+  return n;
+}
+
+/* ── shopping ────────────────────────────────────────────── */
+
+/**
+ * Everything a range of planned days needs, in grams, grouped by aisle.
+ *
+ * Recipes are expanded to their ingredients, because you buy rice and chicken,
+ * not "rice plate". Quantities are summed across the whole range so one line
+ * says "1.4 kg chicken breast" rather than seven lines saying 200 g.
+ */
+export function shoppingList(fromKey, days = 7) {
+  const totals = new Map();
+
+  const add = (foodId, grams) => {
+    if (!foodId || !(grams > 0)) return;
+    totals.set(foodId, (totals.get(foodId) || 0) + grams);
+  };
+
+  for (let i = 0; i < days; i++) {
+    const key = addDays(fromKey, i);
+    for (const items of Object.values(planFor(key))) {
+      for (const item of items) {
+        if (item.kind === "meal") {
+          const meal = state.meals.find(m => m.id === item.ref);
+          if (!meal) continue;
+          const share = (item.amount || 1) / mealServings(meal);
+          for (const ing of meal.items || []) {
+            const food = getFood(ing.foodId);
+            if (!food) continue;
+            add(ing.foodId, macrosFor(food, ing.amount, ing.unit).grams * share);
+          }
+        } else {
+          const food = getFood(item.ref);
+          if (!food) continue;
+          add(item.ref, macrosFor(food, item.amount, item.unit).grams);
+        }
+      }
+    }
+  }
+
+  const byCategory = {};
+  for (const [foodId, grams] of totals) {
+    const food = getFood(foodId);
+    if (!food) continue;
+    (byCategory[food.cat] ||= []).push({ foodId, name: food.name, grams: Math.round(grams) });
+  }
+  for (const list of Object.values(byCategory)) list.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    categories: Object.keys(byCategory).sort().map(cat => ({ cat, items: byCategory[cat] })),
+    itemCount: totals.size
+  };
+}
+
+/* ── periodisation ───────────────────────────────────────── */
+
+/**
+ * Progression across weeks, not just across sessions.
+ *
+ * Double progression handles the load inside a session. This handles the other
+ * axis: volume climbs for a few weeks, then a deload week drops it so fatigue
+ * clears and the next block starts from a recovered base. Without it, sets only
+ * ever go up and the wall arrives about week seven.
+ *
+ * The scheme is the ordinary one: within each mesocycle, week 1 runs the
+ * programmed sets, each following week adds one set per exercise up to two extra,
+ * and the last week of the cycle halves everything at the same weights.
+ */
+export const DEFAULT_BLOCK = {
+  enabled: false,
+  cycleWeeks: 5,      // four working weeks then a deload
+  maxAddedSets: 2
+};
+
+export function blockConfig() {
+  return { ...DEFAULT_BLOCK, ...(state.program?.block || {}) };
+}
+
+export function setBlockConfig(patch) {
+  update(d => {
+    d.program.block = { ...DEFAULT_BLOCK, ...(d.program.block || {}), ...patch };
+  });
+}
+
+/** Where a date sits in the current mesocycle. */
+export function phaseFor(key = todayKey()) {
+  const block = blockConfig();
+  const week = Math.max(1, weekOfBlock(key));
+  const cycle = Math.max(2, block.cycleWeeks);
+  const posInCycle = ((week - 1) % cycle) + 1;
+  const cycleNumber = Math.floor((week - 1) / cycle) + 1;
+  const deload = posInCycle === cycle;
+  const added = deload ? 0 : Math.min(block.maxAddedSets, posInCycle - 1);
+
+  return {
+    enabled: block.enabled,
+    week,
+    cycle,
+    cycleNumber,
+    posInCycle,
+    deload,
+    addedSets: added,
+    name: deload ? "Deload" : posInCycle === 1 ? "Reset" : added >= block.maxAddedSets ? "Peak volume" : "Accumulation",
+    note: deload
+      ? "Same weights, half the sets. Stop every set well short of failure — this week is where the last four get absorbed."
+      : posInCycle === 1
+        ? "Back to the programmed sets after the deload. Expect the weights to feel light; resist adding load on week one."
+        : `Week ${posInCycle} of ${cycle}: ${added} extra set per exercise. Keep one or two reps in reserve on everything but the last set.`
+  };
+}
+
+/**
+ * The session as it should actually be performed on a given day — the programme
+ * adjusted for where the week sits in the cycle.
+ */
+export function plannedSessionFor(key = todayKey()) {
+  const day = workoutFor(key);
+  if (!day) return null;
+
+  const phase = phaseFor(key);
+  if (!phase.enabled) return { ...day, phase: null, ex: day.ex };
+
+  const ex = day.ex.map(e => {
+    const base = e.sets || 0;
+    const sets = phase.deload
+      ? Math.max(1, Math.ceil(base / 2))
+      : base + phase.addedSets;
+    return { ...e, sets, baseSets: base, adjusted: sets !== base };
+  });
+
+  return { ...day, ex, phase };
 }

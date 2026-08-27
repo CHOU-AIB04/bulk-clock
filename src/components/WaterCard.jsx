@@ -1,6 +1,8 @@
 import React from "react";
 import { Droplets, Minus, Plus, RotateCcw } from "lucide-react";
 import { useStore, dayWater, addWater, setWater } from "../lib/store.js";
+import { tapLight } from "../lib/haptics.js";
+import { formatVolume } from "../lib/units.js";
 
 /**
  * Water, counted in glasses rather than millilitres, because nobody measures.
@@ -24,8 +26,8 @@ export default function WaterCard({ dateKey }) {
         <span className="grow">
           <span className="caps faint" style={{ display: "block", fontSize: 10 }}>Water</span>
           <span className="stat-sm" style={{ display: "block", marginTop: 5 }}>
-            {(ml / 1000).toFixed(1)}
-            <span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> / {(target / 1000).toFixed(1)} L</span>
+            {formatVolume(ml)}
+            <span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> / {formatVolume(target)}</span>
           </span>
         </span>
         <button
@@ -34,7 +36,7 @@ export default function WaterCard({ dateKey }) {
         >
           <Minus size={18} />
         </button>
-        <button className="btn btn-icon btn-primary" aria-label="Add a glass" onClick={() => addWater(dateKey, glass)}>
+        <button className="btn btn-icon btn-primary" aria-label="Add a glass" onClick={() => { tapLight(); addWater(dateKey, glass); }}>
           <Plus size={18} />
         </button>
       </div>

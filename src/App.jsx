@@ -7,19 +7,23 @@ import Nutrition from "./screens/Nutrition.jsx";
 import Training from "./screens/Training.jsx";
 import Stats from "./screens/Stats.jsx";
 import Profile from "./screens/Profile.jsx";
-import { getState, useStore, pruneSessionOverrides, todayKey } from "./lib/store.js";
-import { rescheduleAll, scheduleTodaySession, isNative } from "./lib/notify.js";
+import { getState, useStore, pruneSessionOverrides, pruneReminders, todayKey } from "./lib/store.js";
+import { rescheduleAll, scheduleTodaySession, isNative, onNotificationTap, suppressDoneToday } from "./lib/notify.js";
+import ReminderTakeover from "./components/ReminderTakeover.jsx";
+import { dueEvent } from "./lib/reminders.js";
+import { autoBackup } from "./lib/backup.js";
+import { t, setLocale, detectLocale, getLocale } from "./lib/i18n.js";
 
 const TABS = [
-  ["home", "Today", Home, Dashboard],
-  ["diet", "Diet", Utensils, Nutrition],
-  ["training", "Training", Dumbbell, Training],
-  ["stats", "Progress", TrendingUp, Stats]
+  ["home", "nav.today", Home, Dashboard],
+  ["diet", "nav.diet", Utensils, Nutrition],
+  ["training", "nav.training", Dumbbell, Training],
+  ["stats", "nav.progress", TrendingUp, Stats]
 ];
 
 function greeting() {
   const h = new Date().getHours();
-  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  return t(h < 12 ? "greeting.morning" : h < 18 ? "greeting.afternoon" : "greeting.evening");
 }
 
 /** Paint the chosen theme on <html> so the CSS variables switch wholesale. */
@@ -46,18 +50,68 @@ export default function App() {
   const avatar = useStore(s => s.profile.photo);
   const objective = useStore(s => s.profile.objective);
   const theme = useStore(s => s.settings.theme);
+  const language = useStore(s => s.settings.language);
   const [tab, setTab] = useState("home");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [reminder, setReminder] = useState(null);
   const scrollRef = useRef(null);
 
   useTheme(theme);
+
+  // Language, and with Arabic the whole document flips to right-to-left.
+  // `null` means the user hasn't chosen, so the phone's own setting wins.
+  const [, bumpLocale] = useState(0);
+  useEffect(() => {
+    setLocale(language || detectLocale());
+    bumpLocale(n => n + 1);
+  }, [language]);
 
   // Re-arm reminders on every launch so they survive reboots and force-stops.
   useEffect(() => {
     if (!onboarded) return;
     pruneSessionOverrides();
+    pruneReminders();
+    // Weekly at most, and it never blocks anything.
+    autoBackup().catch(() => {});
     if (!isNative()) return;
-    rescheduleAll(getState()).then(() => scheduleTodaySession(getState(), todayKey()));
+    rescheduleAll(getState())
+      .then(() => scheduleTodaySession(getState(), todayKey()))
+      .then(() => suppressDoneToday(getState()));
+  }, [onboarded]);
+
+  /**
+   * The full-screen reminder.
+   *
+   * Checked on a timer, on app resume and when a notification is tapped, so it
+   * appears whether the phone woke you or you happened to open the app. The
+   * check is cheap — it reads state already in memory — but it is throttled to
+   * once every 20 seconds because there is nothing to gain from being faster.
+   */
+  useEffect(() => {
+    if (!onboarded) return;
+
+    const check = () => {
+      const next = dueEvent();
+      setReminder(prev => {
+        if (!next) return null;
+        if (prev && prev.id === next.id) return prev;   // don't re-mount mid-interaction
+        return next;
+      });
+    };
+
+    check();
+    // Anything answered since the last pass should stop reminding.
+    if (isNative()) suppressDoneToday(getState());
+    const id = setInterval(check, 20000);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const offTap = onNotificationTap(check);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      offTap?.();
+    };
   }, [onboarded]);
 
   useEffect(() => {
@@ -69,7 +123,7 @@ export default function App() {
   }
 
   const Screen = TABS.find(t => t[0] === tab)[3];
-  const objLabel = objective === "lose" ? "Cutting" : objective === "maintain" ? "Maintaining" : "Building";
+  const objLabel = t(`objective.${objective}`);
 
   return (
     <div className="shell">
@@ -108,11 +162,21 @@ export default function App() {
               onClick={() => { setProfileOpen(false); setTab(id); }}
             >
               <Ico size={21} strokeWidth={2.2} />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
       </nav>
+
+      {reminder && (
+        <ReminderTakeover
+          event={reminder}
+          onClose={() => {
+            setReminder(null);
+            if (reminder.kind === "session") { setProfileOpen(false); setTab("training"); }
+          }}
+        />
+      )}
     </div>
   );
 }

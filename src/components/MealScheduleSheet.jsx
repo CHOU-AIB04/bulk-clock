@@ -4,6 +4,7 @@ import {
   useStore, addSlot, updateSlot, removeSlot, entriesInSlot,
   applyMealPreset, respaceSlots, toMinutes
 } from "../lib/store.js";
+import { t } from "../lib/i18n.js";
 
 /**
  * The meal schedule, entirely on the user's terms.
@@ -32,7 +33,7 @@ export default function MealScheduleSheet({ onClose }) {
 
         <div className="sheet-h">
           <Clock size={20} style={{ color: "var(--accent-text)" }} />
-          <h3 className="h3 grow" style={{ margin: 0 }}>Meal schedule</h3>
+          <h3 className="h3 grow" style={{ margin: 0 }}>{t("schedule.title")}</h3>
           <button className="btn-ghost" onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
 
@@ -125,7 +126,7 @@ export default function MealScheduleSheet({ onClose }) {
             })}
 
             <button className="btn btn-secondary btn-wide" style={{ marginTop: 6 }} onClick={() => addSlot()}>
-              <Plus size={17} /> Add another meal
+              <Plus size={17} /> {t("schedule.addMeal")}
             </button>
 
             <div className="sect-h" style={{ marginTop: 28 }}>

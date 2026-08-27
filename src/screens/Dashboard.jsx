@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Sparkles, Plus, Play, Clock, Flame, Moon, Check, ChevronRight, Trash2,
-  Dumbbell, Target, CheckCircle2, Utensils, TrendingUp, CopyPlus, Clock3
+  Dumbbell, Target, CheckCircle2, Utensils, TrendingUp, CopyPlus, Clock3, CalendarClock
 } from "lucide-react";
 import Ring from "../components/Ring.jsx";
 import AddSheet from "../components/AddSheet.jsx";
@@ -10,13 +10,16 @@ import EntryEditor from "../components/EntryEditor.jsx";
 import CopyDaySheet from "../components/CopyDaySheet.jsx";
 import WaterCard from "../components/WaterCard.jsx";
 import MealScheduleSheet from "../components/MealScheduleSheet.jsx";
+import Planner from "../components/Planner.jsx";
 import FoodAvatar, { MealAvatar } from "../components/FoodAvatar.jsx";
 import {
   useStore, dayTotals, dayEntries, todayKey, addDays, parseKey,
   dayConsistency, consistencyStreak, consistencyRate, workoutFor,
-  removeEntry, foodMap, sessionTimeFor, orphanEntries, targetsFor, weekBudget
+  removeEntry, foodMap, sessionTimeFor, orphanEntries, targetsFor, weekBudget,
+  planForSlot, planItemMacros, planItemName, logPlanned
 } from "../lib/store.js";
 import { headlineInsight } from "../lib/insights.js";
+import { t } from "../lib/i18n.js";
 
 const r0 = n => Math.round(n);
 const pad = n => String(n).padStart(2, "0");
@@ -65,6 +68,7 @@ export default function Dashboard({ onGo }) {
   const [editingEntry, setEditingEntry] = useState(null);
   const [copying, setCopying] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -130,7 +134,7 @@ export default function Dashboard({ onGo }) {
         <div className="row" style={{ position: "relative", zIndex: 1 }}>
           <div className="grow">
             <div className="caps">
-              {isToday ? "Today's energy" : parseKey(key).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}
+              {isToday ? t("today.energy") : parseKey(key).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}
               {targets.dayType ? ` · ${targets.dayType} day` : ""}
             </div>
             <div className="stat-xl" style={{ marginTop: 12 }}>{r0(totals.kcal)}</div>
@@ -143,7 +147,11 @@ export default function Dashboard({ onGo }) {
             <span className="stat-sm" style={{ color: "var(--on-accent)" }}>{r0(pct)}<span style={{ fontSize: 11 }}>%</span></span>
           </Ring>
         </div>
-        <div className="bar on-accent" style={{ marginTop: 18, position: "relative", zIndex: 1 }}>
+        <div
+          className="bar on-accent" style={{ marginTop: 18, position: "relative", zIndex: 1 }}
+          role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}
+          aria-label={`${r0(totals.kcal)} of ${targets.kcal} calories`}
+        >
           <i style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -178,7 +186,7 @@ export default function Dashboard({ onGo }) {
               {consistency.hit} / {consistency.total} kept
             </span>
           </div>
-          <div className="caps faint" style={{ fontSize: 10 }}>Meals left today</div>
+          <div className="caps faint" style={{ fontSize: 10 }}>{t("today.mealsLeft")}</div>
           <div className="stat-sm" style={{ marginTop: 6 }}>
             {mealsLeft}<span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> of {profile.slots.length}</span>
           </div>
@@ -192,7 +200,7 @@ export default function Dashboard({ onGo }) {
             <TrendingUp size={17} style={{ color: "var(--accent-text)" }} />
             <span className="caps faint" style={{ fontSize: 10, marginLeft: "auto" }}>14 days</span>
           </div>
-          <div className="caps faint" style={{ fontSize: 10 }}>Consistency</div>
+          <div className="caps faint" style={{ fontSize: 10 }}>{t("today.consistency")}</div>
           <div className="stat-sm" style={{ marginTop: 6 }}>
             {Math.round(rate.pct * 100)}<span className="dim" style={{ fontSize: 12, fontWeight: 400 }}>%</span>
           </div>
@@ -211,7 +219,7 @@ export default function Dashboard({ onGo }) {
           <div className="row" style={{ marginBottom: 10 }}>
             <Target size={17} style={{ color: "var(--accent-text)" }} />
           </div>
-          <div className="caps faint" style={{ fontSize: 10 }}>Protein still to eat</div>
+          <div className="caps faint" style={{ fontSize: 10 }}>{t("today.proteinLeft")}</div>
           <div className="stat-sm" style={{ marginTop: 6 }}>
             {proteinLeft}<span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> g</span>
           </div>
@@ -226,7 +234,7 @@ export default function Dashboard({ onGo }) {
           <div className="row" style={{ marginBottom: 10 }}>
             <CheckCircle2 size={17} style={{ color: "var(--accent-text)" }} />
           </div>
-          <div className="caps faint" style={{ fontSize: 10 }}>Sessions this week</div>
+          <div className="caps faint" style={{ fontSize: 10 }}>{t("today.sessionsWeek")}</div>
           <div className="stat-sm" style={{ marginTop: 6 }}>
             {sessionsThisWeek}<span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> / {sessionsPlanned}</span>
           </div>
@@ -240,7 +248,7 @@ export default function Dashboard({ onGo }) {
         <div className="card" style={{ marginTop: 14 }}>
           <div className="row">
             <span className="grow">
-              <span className="caps faint" style={{ display: "block", fontSize: 10 }}>This week's budget</span>
+              <span className="caps faint" style={{ display: "block", fontSize: 10 }}>{t("today.weeklyBudget")}</span>
               <span className="stat-sm" style={{ display: "block", marginTop: 6 }}>
                 {(weekly.remaining / 1000).toFixed(1)}
                 <span className="dim" style={{ fontSize: 12, fontWeight: 400 }}> k kcal left of {(weekly.target / 1000).toFixed(1)} k</span>
@@ -280,10 +288,10 @@ export default function Dashboard({ onGo }) {
 
       <div className="row" style={{ marginTop: 14, gap: 10 }}>
         <button className="btn btn-primary grow" onClick={() => setAdding(next || profile.slots[0])}>
-          <Plus size={18} /> Log food
+          <Plus size={18} /> {t("today.logFood")}
         </button>
         <button className="btn btn-quiet grow" onClick={() => onGo("training")}>
-          <Dumbbell size={18} /> Train
+          <Dumbbell size={18} /> {t("today.train")}
         </button>
       </div>
 
@@ -292,7 +300,7 @@ export default function Dashboard({ onGo }) {
         <div className="glass lit" style={{ marginTop: 20 }}>
           <div className="row" style={{ marginBottom: 10 }}>
             <Sparkles size={19} style={{ color: "var(--accent-text)" }} />
-            <span className="h4 neon">Today's read</span>
+            <span className="h4 neon">{t("today.read")}</span>
             <span className={"badge " + TONE_BADGE[insight.tone]} style={{ marginLeft: "auto" }}>{insight.tag}</span>
           </div>
           <div className="body-lg" style={{ fontWeight: 600 }}>{insight.title}</div>
@@ -303,16 +311,22 @@ export default function Dashboard({ onGo }) {
       {/* ── the day's meals ── */}
       <div className="sect">
         <div className="sect-h">
-          <h2 className="h3">Meals</h2>
+          <h2 className="h3">{t("today.meals")}</h2>
           <span className="row" style={{ gap: 10 }}>
             <span className="caps faint">
-              {profile.slots.filter(s => bySlot[s.id]?.length).length} / {profile.slots.length} logged
+              {t("today.loggedCount", {
+                done: profile.slots.filter(s => bySlot[s.id]?.length).length,
+                total: profile.slots.length
+              })}
             </span>
             <button className="btn btn-sm btn-quiet" onClick={() => setCopying(true)} aria-label="Copy a day">
               <CopyPlus size={15} />
             </button>
             <button className="btn btn-sm btn-quiet" onClick={() => setScheduling(true)} aria-label="Edit meal schedule">
               <Clock3 size={15} />
+            </button>
+            <button className="btn btn-sm btn-quiet" onClick={() => setPlanning(true)} aria-label="Plan ahead">
+              <CalendarClock size={15} />
             </button>
           </span>
         </div>
@@ -335,7 +349,7 @@ export default function Dashboard({ onGo }) {
                   <span className="grow">
                     <span className="t">{slot.name}</span>
                     <span className="d" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {done ? items.map(i => i.name).join(", ") : `Scheduled ${slot.time}`}
+                      {done ? items.map(i => i.name).join(", ") : t("today.scheduled", { time: slot.time })}
                     </span>
                   </span>
                   <span className="v">
@@ -344,6 +358,31 @@ export default function Dashboard({ onGo }) {
                       : <span className="tnum dim" style={{ fontSize: 14 }}>{slot.time}</span>}
                   </span>
                 </button>
+
+                {(() => {
+                  const plannedItems = planForSlot(key, slot.id);
+                  if (!plannedItems.length) return null;
+                  const pt = plannedItems.reduce(
+                    (a, it) => { const m = planItemMacros(it); return { kcal: a.kcal + m.kcal }; },
+                    { kcal: 0 }
+                  );
+                  return (
+                    <div className="planned-row">
+                      <span className="grow" style={{ minWidth: 0 }}>
+                        <span className="caps faint" style={{ fontSize: 9.5 }}>{t("plan.planned")}</span>
+                        <span
+                          className="dim"
+                          style={{ display: "block", fontSize: 12.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {plannedItems.map(planItemName).join(", ")} · {r0(pt.kcal)} kcal
+                        </span>
+                      </span>
+                      <button className="btn btn-sm btn-primary" onClick={() => logPlanned(key, slot.id)}>
+                        <Check size={14} /> {t("plan.ateIt")}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {items.length > 0 && (
                   <div style={{ paddingLeft: 4, marginTop: 2, marginBottom: 6 }}>
@@ -381,20 +420,20 @@ export default function Dashboard({ onGo }) {
         className="btn btn-ghost btn-wide" style={{ marginTop: 8 }}
         onClick={() => setScheduling(true)}
       >
-        <Clock3 size={15} /> {profile.slots.length} meals a day — change this
+        <Clock3 size={15} /> {t("today.mealsADay", { n: profile.slots.length })}
       </button>
 
       {/* ── the follow-up ── */}
       <div className="sect">
         <CheckIn dateKey={key} />
         <button className="btn-ghost" style={{ paddingLeft: 0, marginTop: 4 }} onClick={() => onGo("stats")}>
-          See my consistency <ChevronRight size={16} />
+          {t("today.seeConsistency")} <ChevronRight size={16} />
         </button>
       </div>
 
       {/* ── session ── */}
       <div className="sect">
-        <div className="sect-h"><h2 className="h3">{wo ? "Session" : "Recovery day"}</h2></div>
+        <div className="sect-h"><h2 className="h3">{wo ? t("today.session") : t("today.restDay")}</h2></div>
         <button className="glass" style={{ width: "100%", textAlign: "left", display: "block" }} onClick={() => onGo("training")}>
           <div className="row">
             <span style={{ color: "var(--accent-text)" }}>{wo ? <Play size={22} /> : <Moon size={22} />}</span>
@@ -424,6 +463,7 @@ export default function Dashboard({ onGo }) {
       )}
       {copying && <CopyDaySheet dateKey={key} onClose={() => setCopying(false)} />}
       {scheduling && <MealScheduleSheet onClose={() => setScheduling(false)} />}
+      {planning && <Planner onClose={() => setPlanning(false)} />}
     </div>
   );
 }

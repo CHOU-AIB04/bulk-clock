@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { tileFor } from "../lib/foodVisual.js";
-import { titleFor, cachedPhoto, fetchPhoto } from "../lib/photos.js";
+import { titleFor, cachedPhoto, cachedLocalId, fetchPhoto, cacheLocally } from "../lib/photos.js";
+import { imageSrc, imageSrcSync } from "../lib/images.js";
 import { Photo } from "./Photo.jsx";
 
 /**
@@ -12,17 +13,36 @@ export default function FoodAvatar({ food, size = "", photos = true }) {
   const tile = tileFor(food);
   const title = photos ? titleFor(food) : null;
   const direct = food.photo || null;
-  const [src, setSrc] = useState(() => direct || (title ? cachedPhoto(title) : null));
+  // A locally saved copy wins over the remote URL: it renders instantly and it
+  // works with no signal.
+  const localId = title ? cachedLocalId(title) : null;
+  const [src, setSrc] = useState(() =>
+    direct || (localId ? imageSrcSync(localId) : null) || (title ? cachedPhoto(title) : null)
+  );
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (direct || !title || src) return;
+    if (direct || !title) return;
     let alive = true;
+
+    if (localId) {
+      imageSrc(localId).then(s2 => { if (alive && s2) setSrc(s2); });
+      return () => { alive = false; };
+    }
+
+    if (src) {
+      // Already have the URL — quietly keep a copy for next time, offline.
+      cacheLocally(title, src);
+      return () => { alive = false; };
+    }
+
     fetchPhoto(title).then(url => {
-      if (alive && url) setSrc(url);
+      if (!alive || !url) return;
+      setSrc(url);
+      cacheLocally(title, url);
     });
     return () => { alive = false; };
-  }, [title, direct, src]);
+  }, [title, direct, src, localId]);
 
   return (
     <span className={"fav " + size} style={{ background: tile.background }} aria-hidden="true">

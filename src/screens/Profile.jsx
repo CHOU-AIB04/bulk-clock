@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   X, Bell, BellRing, BellOff, Clock, Target, Database, RotateCcw, Check,
-  Moon, Sun, SunMoon, Plus, Trash2, Scale, Droplets
+  Moon, Sun, SunMoon, Plus, Trash2, Scale, Droplets, AlarmClock
 } from "lucide-react";
 import {
   useStore, setSetting, setProfile, exportJSON, replaceState, update,
@@ -11,6 +11,14 @@ import { rescheduleAll, testNotification, cancelAll, pendingCount, isNative } fr
 import { computeTargets, OBJECTIVES, balanceMacros, macrosReconcile } from "../lib/targets.js";
 import { PhotoPicker } from "../components/Photo.jsx";
 import MealScheduleSheet from "../components/MealScheduleSheet.jsx";
+import ReminderHealth from "../components/ReminderHealth.jsx";
+import ReminderTakeover from "../components/ReminderTakeover.jsx";
+import GoalSwitcher from "../components/GoalSwitcher.jsx";
+import { exportFile, autoBackup, listBackups, restoreBackup } from "../lib/backup.js";
+import { downloadAllPhotos, localPhotoCoverage } from "../lib/photos.js";
+import { todaysEvents } from "../lib/reminders.js";
+import { weightUnit, toDisplayWeight, fromDisplayWeight, formatHeight } from "../lib/units.js";
+import { t, LOCALE_LIST, coverage, detectLocale } from "../lib/i18n.js";
 
 function Toggle({ name, desc, on, onChange }) {
   return (
@@ -33,6 +41,43 @@ export default function Profile({ onClose }) {
   const [paste, setPaste] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const [scheduling, setScheduling] = useState(false);
+  const [previewEvent, setPreviewEvent] = useState(null);
+  const [switching, setSwitching] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [exporting, setExporting] = useState("");
+  const [photoJob, setPhotoJob] = useState(null);
+
+  useEffect(() => { listBackups().then(setBackups); }, []);
+
+  async function doExport(kind, label) {
+    setExporting(kind);
+    const r = await exportFile(kind);
+    setExporting("");
+    if (r.ok && r.shared) flash(`${label} exported and shared.`);
+    else if (r.ok && r.reason === "web") flash(`${label} downloaded.`);
+    else if (r.ok) flash(`${label} saved to ${r.path}.`);
+    else flash(`Couldn't write the file: ${r.reason}`);
+  }
+
+  /**
+   * Show the takeover on demand, using a real event from today so what you see
+   * is exactly what will appear — the next meal you haven't logged, or the next
+   * one on the clock if you've logged them all.
+   */
+  function previewReminder() {
+    const events = todaysEvents().filter(e => e.kind !== "checkin");
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const upcoming = events.find(e => !e.done && e.minutes >= nowMin)
+      || events.find(e => !e.done)
+      || events.find(e => e.minutes >= nowMin)
+      || events[0];
+
+    if (!upcoming) {
+      flash("Add a meal to your schedule first — there's nothing to remind you about.");
+      return;
+    }
+    setPreviewEvent({ ...upcoming, deltaMin: upcoming.minutes - nowMin, late: upcoming.minutes < nowMin });
+  }
 
   useEffect(() => { pendingCount().then(setPending); }, [settings]);
 
@@ -43,8 +88,11 @@ export default function Profile({ onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     settings.notifyMeals, settings.notifyTraining, settings.notifyWeighIn,
-    settings.notifyRestDay, settings.trainingTime, settings.weighInTime,
-    JSON.stringify(profile.slots)
+    settings.notifyRestDay, settings.notifyCheckin, settings.notifyWater,
+    settings.trainingTime, settings.weighInTime, settings.checkinTime,
+    settings.leadMinutes, settings.trackWeight, settings.notifySupplements,
+    JSON.stringify(profile.slots), JSON.stringify(state.program?.days || {}),
+    JSON.stringify(state.supplements || [])
   ]);
 
   function flash(t) { setMsg(t); setTimeout(() => setMsg(""), 3000); }
@@ -99,12 +147,12 @@ export default function Profile({ onClose }) {
   return (
     <div className="page" style={{ paddingTop: 20 }}>
       <div className="row" style={{ marginBottom: 20 }}>
-        <h2 className="h2 grow">Settings</h2>
+        <h2 className="h2 grow">{t("settings.title")}</h2>
         <button className="btn btn-icon btn-quiet" onClick={onClose} aria-label="Close settings"><X size={20} /></button>
       </div>
 
       <div className="field">
-        <span className="lab">Profile picture</span>
+        <span className="lab">{t("settings.picture")}</span>
         <PhotoPicker
           id={profile.photo} onChange={photo => setProfile({ photo })}
           size="avatar" shape="round" label="Add a picture" replaceLabel="Change picture"
@@ -112,19 +160,75 @@ export default function Profile({ onClose }) {
       </div>
 
       <label className="field">
-        <span className="lab">Your name</span>
+        <span className="lab">{t("settings.name")}</span>
         <input
           className="input" value={profile.name} placeholder="Optional"
           onChange={e => setProfile({ name: e.target.value })}
         />
       </label>
 
-      {/* ── appearance ── */}
+      {/* ── language ── */}
       <div className="sect-h" style={{ marginTop: 26 }}>
-        <h2 className="h3">Appearance</h2>
+        <h2 className="h3">{t("settings.language")}</h2>
+      </div>
+      <div className="chips">
+        <button
+          className="chip" aria-pressed={!settings.language}
+          onClick={() => setSetting({ language: null })}
+        >
+          {t("settings.system")}
+        </button>
+        {LOCALE_LIST.map(l => (
+          <button
+            key={l.code} className="chip" aria-pressed={settings.language === l.code}
+            onClick={() => setSetting({ language: l.code })}
+            lang={l.code}
+          >
+            {l.native}
+          </button>
+        ))}
+      </div>
+      {(() => {
+        const code = settings.language || detectLocale();
+        const cov = coverage(code);
+        const l = LOCALE_LIST.find(x => x.code === code);
+        return (
+          <p className="note" style={{ marginTop: 12 }}>
+            {code === "en"
+              ? "English is the source language, so everything is written in it."
+              : <>
+                  <b>{l?.native}</b> covers the interface — navigation, buttons, labels and the
+                  reminder screen. The longer explanatory notes are still in English and will be
+                  translated as they settle. Nothing shows a blank; untranslated text falls back.
+                  {l?.dir === "rtl" && " The whole app lays out right-to-left in Arabic."}
+                </>}
+          </p>
+        );
+      })()}
+
+      {/* ── units ── */}
+      <div className="sect-h" style={{ marginTop: 26 }}>
+        <h2 className="h3">{t("settings.units")}</h2>
       </div>
       <div className="seg">
-        {[["dark", "Dark", Moon], ["light", "Light", Sun], ["system", "System", SunMoon]].map(([id, label, Ico]) => (
+        {[["metric", "Metric · kg, cm"], ["imperial", "Imperial · lb, in"]].map(([id, label]) => (
+          <button key={id} aria-pressed={settings.units === id} onClick={() => setSetting({ units: id })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="note" style={{ marginTop: 12 }}>
+        Everything is stored in metric and converted only for display, so switching back and forth
+        never changes a single number you logged. Food portions stay in grams either way — every
+        nutrition label in the world is per 100 g.
+      </p>
+
+      {/* ── appearance ── */}
+      <div className="sect-h" style={{ marginTop: 26 }}>
+        <h2 className="h3">{t("settings.appearance")}</h2>
+      </div>
+      <div className="seg">
+        {[["dark", t("settings.dark"), Moon], ["light", t("settings.light"), Sun], ["system", t("settings.system"), SunMoon]].map(([id, label, Ico]) => (
           <button key={id} aria-pressed={settings.theme === id} onClick={() => setSetting({ theme: id })}>
             <Ico size={15} style={{ verticalAlign: -3, marginRight: 6 }} />{label}
           </button>
@@ -136,15 +240,14 @@ export default function Profile({ onClose }) {
 
       {/* ── reminders ── */}
       <div className="sect-h" style={{ marginTop: 28 }}>
-        <h2 className="h3">Reminders</h2>
+        <h2 className="h3">{t("settings.reminders")}</h2>
         <span className="badge">{isNative() ? (pending == null ? "…" : `${pending} scheduled`) : "app only"}</span>
       </div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <ReminderHealth />
+      </div>
+
       <div className="card">
-        {!isNative() && (
-          <p className="note warn" style={{ marginBottom: 16 }}>
-            <b>Running in a browser.</b> Device reminders only fire in the installed APK.
-          </p>
-        )}
         <Toggle
           name="Meal reminders" desc={profile.slots.map(s => s.time).join(" · ")}
           on={settings.notifyMeals} onChange={v => setSetting({ notifyMeals: v })}
@@ -156,6 +259,11 @@ export default function Profile({ onClose }) {
         <Toggle
           name="Rest days" desc="Wed, Sat, Sun at 09:00 — still eat the full target"
           on={settings.notifyRestDay} onChange={v => setSetting({ notifyRestDay: v })}
+        />
+        <Toggle
+          name="Supplements"
+          desc={state.supplements.length ? `${state.supplements.length} on your list, each at its own time` : "Nothing on your supplement list yet"}
+          on={settings.notifySupplements} onChange={v => setSetting({ notifySupplements: v })}
         />
         <Toggle
           name="Water"
@@ -171,6 +279,61 @@ export default function Profile({ onClose }) {
           on={settings.notifyWeighIn && settings.trackWeight}
           onChange={v => setSetting({ notifyWeighIn: v, trackWeight: v ? true : settings.trackWeight })}
         />
+
+        <div className="sect-h" style={{ marginTop: 22, marginBottom: 12 }}>
+          <h2 className="h4"><AlarmClock size={14} style={{ verticalAlign: -2, marginRight: 6 }} />How they arrive</h2>
+        </div>
+
+        <button className="btn btn-primary btn-wide" style={{ marginBottom: 16 }} onClick={previewReminder}>
+          <AlarmClock size={17} /> Show me the full-screen reminder
+        </button>
+        <p className="note" style={{ marginBottom: 18 }}>
+          <b>When the real one appears:</b> whenever the app is open — or is opened by tapping a
+          notification — and a meal or session is due within your lead time. It checks every 20
+          seconds and each time you come back to the app. It does <b>not</b> take over a locked
+          screen with the app closed; that needs a native Android change, described in
+          <b> android/FULL_SCREEN_REMINDERS.md</b>. What does reach you with the app shut is the
+          heads-up notification, with the same one-tap answers.
+        </p>
+
+        <Toggle
+          name="Full-screen reminders"
+          desc="Takes over the screen for the meal or session that's due, with one-tap answers — rather than a banner that scrolls away"
+          on={settings.fullScreenReminders} onChange={v => setSetting({ fullScreenReminders: v })}
+        />
+
+        <div style={{ marginTop: 14 }}>
+          <span className="lab">How far ahead</span>
+          <div className="chips" style={{ marginTop: 8 }}>
+            {[10, 15, 30, 45, 60].map(v => (
+              <button
+                key={v} className="chip" aria-pressed={settings.leadMinutes === v}
+                onClick={() => setSetting({ leadMinutes: v })}
+              >
+                {v} min
+              </button>
+            ))}
+          </div>
+          <p className="note" style={{ marginTop: 14 }}>
+            Every meal and session is announced <b>{settings.leadMinutes} minutes ahead</b> as well as
+            at the time itself. The early one is the one that changes anything — being told about
+            lunch at lunchtime is news, half an hour earlier is a chance to do something about it.
+          </p>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <span className="lab">Snooze length</span>
+          <div className="chips" style={{ marginTop: 8 }}>
+            {[5, 10, 15, 30].map(v => (
+              <button
+                key={v} className="chip" aria-pressed={settings.snoozeMinutes === v}
+                onClick={() => setSetting({ snoozeMinutes: v })}
+              >
+                {v} min
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid2" style={{ marginTop: 16 }}>
           <label className="field" style={{ marginBottom: 0 }}>
@@ -190,8 +353,10 @@ export default function Profile({ onClose }) {
             pendingCount().then(setPending);
           }}><BellRing size={15} /> Reschedule</button>
           <button className="btn btn-sm btn-quiet" onClick={async () => {
-            flash(await testNotification() ? "Test fires in 10 seconds." : "Only works in the installed app.");
-          }}><Bell size={15} /> Test</button>
+            flash(await testNotification()
+              ? "A test notification fires in 10 seconds — try answering it from the shade."
+              : "Notifications only fire in the installed app. The full-screen preview below works here too.");
+          }}><Bell size={15} /> Test notification</button>
           <button className="btn btn-sm btn-quiet" onClick={async () => { await cancelAll(); setPending(0); flash("All reminders cancelled."); }}>
             <BellOff size={15} /> Cancel all
           </button>
@@ -205,20 +370,17 @@ export default function Profile({ onClose }) {
           the Training tab.
         </p>
 
-        <p className="note warn" style={{ marginTop: 12 }}>
-          <b>Android will delay these unless you allow it.</b> Settings → Apps → Bulk Clock → Battery →
-          Unrestricted. Without that, reminders drift once the phone sits idle.
-        </p>
+
       </div>
 
       {/* ── meal times ── */}
       <div className="sect-h" style={{ marginTop: 28 }}>
-        <h2 className="h3">Meal schedule</h2>
+        <h2 className="h3">{t("settings.mealSchedule")}</h2>
         <span className="caps faint"><Clock size={12} style={{ verticalAlign: -2 }} /> {profile.slots.length} meals</span>
       </div>
       <div className="card">
         <button className="btn btn-primary btn-wide" style={{ marginBottom: 16 }} onClick={() => setScheduling(true)}>
-          <Clock size={16} /> Open the schedule editor
+          <Clock size={16} /> {t("settings.openSchedule")}
         </button>
         {profile.slots.map((slot, i) => (
           <div className="row" key={slot.id} style={{ marginBottom: i === profile.slots.length - 1 ? 0 : 10, gap: 10 }}>
@@ -308,10 +470,14 @@ export default function Profile({ onClose }) {
 
       {/* ── targets ── */}
       <div className="sect-h" style={{ marginTop: 28 }}>
-        <h2 className="h3">Targets</h2>
+        <h2 className="h3">{t("settings.targets")}</h2>
         <span className="badge"><Target size={12} /> {obj?.caps}</span>
       </div>
       <div className="card">
+        <button className="btn btn-secondary btn-wide" style={{ marginBottom: 18 }} onClick={() => setSwitching(true)}>
+          <Target size={16} /> {t("settings.changeGoal")}
+        </button>
+
         {[
           ["kcalTarget", "Calories", ""], ["pTarget", "Protein", "g"],
           ["cTarget", "Carbs", "g"], ["fTarget", "Fat", "g"]
@@ -334,16 +500,21 @@ export default function Profile({ onClose }) {
             : `That is ${recon.diff > 0 ? "+" : ""}${recon.diff} kcal against your target. Edit any field to rebalance.`}
         </p>
 
-        {[["weight", "Current weight", "kg"], ["goalWeight", "Goal weight", "kg"]].map(([k, label, unit]) => (
+        {[["weight", "Current weight"], ["goalWeight", "Goal weight"]].map(([k, label]) => (
           <div className="row" key={k} style={{ marginBottom: 10, gap: 10 }}>
-            <span className="grow" style={{ fontSize: 14.5 }}>{label}{unit ? ` (${unit})` : ""}</span>
+            <span className="grow" style={{ fontSize: 14.5 }}>{label} ({weightUnit()})</span>
             <input
               className="input num" style={{ flex: "0 0 120px" }} type="number" inputMode="decimal"
-              value={profile[k]} onChange={e => setProfile({ [k]: Number(e.target.value) || 0 })}
-              aria-label={label}
+              value={toDisplayWeight(profile[k]) ?? ""}
+              onChange={e => setProfile({ [k]: fromDisplayWeight(e.target.value) ?? 0 })}
+              aria-label={`${label} in ${weightUnit()}`}
             />
           </div>
         ))}
+        <div className="row" style={{ marginBottom: 10, gap: 10 }}>
+          <span className="grow" style={{ fontSize: 14.5 }}>Height</span>
+          <span className="tnum dim" style={{ fontSize: 14.5 }}>{formatHeight(profile.height)}</span>
+        </div>
         <div className="row" style={{ gap: 10 }}>
           <span className="grow" style={{ fontSize: 14.5 }}>Programme start</span>
           <input
@@ -418,14 +589,111 @@ export default function Profile({ onClose }) {
 
       {/* ── data ── */}
       <div className="sect-h" style={{ marginTop: 28 }}>
-        <h2 className="h3">Your data</h2>
+        <h2 className="h3">{t("settings.yourData")}</h2>
         <span className="caps faint"><Database size={12} style={{ verticalAlign: -2 }} /> {allFoods().length} foods offline</span>
       </div>
       <div className="card">
+        <div className="caps faint" style={{ marginBottom: 12 }}>Export a file</div>
         <div className="row wrap" style={{ gap: 10 }}>
-          <button className="btn btn-sm btn-primary" onClick={copyBackup}>Copy backup</button>
+          {[
+            ["json", "Full backup"],
+            ["food", "Food log CSV"],
+            ["lifts", "Training CSV"],
+            ["body", "Weight & body CSV"]
+          ].map(([kind, label]) => (
+            <button
+              key={kind} className={"btn btn-sm " + (kind === "json" ? "btn-primary" : "btn-quiet")}
+              disabled={exporting === kind}
+              onClick={() => doExport(kind, label)}
+            >
+              {exporting === kind ? "Writing…" : label}
+            </button>
+          ))}
+        </div>
+        <p className="note" style={{ marginTop: 14 }}>
+          Files are written to your <b>Documents</b> folder and handed to the share sheet, so where
+          they go — Drive, email, a cable — is entirely your call. The CSVs open in any spreadsheet;
+          the JSON is the one that can be restored.
+        </p>
+
+        <div className="caps faint" style={{ margin: "20px 0 12px" }}>Automatic backups</div>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <button
+            className="btn btn-sm btn-quiet"
+            onClick={async () => {
+              const r = await autoBackup(true);
+              setBackups(await listBackups());
+              flash(r.ok ? "Backup written." : r.reason === "web" ? "Only works in the installed app." : `Couldn't: ${r.reason}`);
+            }}
+          >
+            Back up now
+          </button>
+          <span className="caps faint" style={{ alignSelf: "center" }}>
+            {backups.length ? `${backups.length} kept` : "none yet"}
+          </span>
+        </div>
+
+        {backups.slice(0, 4).map(b => (
+          <div className="entry" key={b.name}>
+            <span className="grow dim" style={{ fontSize: 13 }}>{b.name.replace("backup-", "").replace(".json", "")}</span>
+            <button
+              className="btn btn-sm btn-quiet"
+              onClick={async () => {
+                const r = await restoreBackup(b.name);
+                flash(r.ok ? "Restored from that backup." : `Couldn't restore: ${r.reason}`);
+              }}
+            >
+              Restore
+            </button>
+          </div>
+        ))}
+
+        <p className="note" style={{ marginTop: 14 }}>
+          A dated copy is kept on the device once a week, and the last six are retained. It protects
+          against clearing the app's data — it does <b>not</b> protect against losing the phone. For
+          that, export the JSON somewhere off the device every so often.
+        </p>
+
+        <div className="caps faint" style={{ margin: "20px 0 12px" }}>Food photos</div>
+        {(() => {
+          const cov = localPhotoCoverage(allFoods());
+          return (
+            <>
+              <p className="note" style={{ marginBottom: 12 }}>
+                Photos are fetched once from Wikipedia and then kept on the device.
+                <b> {cov.local} of {cov.titles}</b> are stored locally so far — the rest fall back to
+                their coloured tile until you next open them with a connection.
+              </p>
+              <button
+                className="btn btn-sm btn-quiet"
+                disabled={!!photoJob}
+                onClick={async () => {
+                  setPhotoJob({ done: 0, total: cov.titles, saved: 0 });
+                  const r = await downloadAllPhotos(allFoods(), p2 => setPhotoJob(p2));
+                  setPhotoJob(null);
+                  flash(`${r.saved} of ${r.total} food photos are now stored on the device.`);
+                }}
+              >
+                {photoJob ? `Downloading ${photoJob.done} / ${photoJob.total}…` : "Download them all now"}
+              </button>
+              {photoJob && (
+                <div className="bar" style={{ marginTop: 12, height: 6 }}>
+                  <i style={{ width: `${photoJob.total ? (photoJob.done / photoJob.total) * 100 : 0}%` }} />
+                </div>
+              )}
+              <p className="dim" style={{ fontSize: 11.5, marginTop: 10 }}>
+                A few megabytes over Wi-Fi, once. After that the database is fully illustrated with
+                no connection at all.
+              </p>
+            </>
+          );
+        })()}
+
+        <div className="caps faint" style={{ margin: "20px 0 12px" }}>Paste a backup back in</div>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <button className="btn btn-sm btn-quiet" onClick={copyBackup}>Copy to clipboard</button>
           <button className="btn btn-sm btn-quiet" onClick={() => setRestoring(r => !r)}>
-            {restoring ? "Cancel" : "Restore backup"}
+            {restoring ? "Cancel" : "Paste and restore"}
           </button>
         </div>
         {restoring && (
@@ -440,8 +708,8 @@ export default function Profile({ onClose }) {
           </>
         )}
         <p className="note" style={{ marginTop: 16 }}>
-          Nothing you log leaves this device — no account, no server. That also means
-          <b> nothing is backed up for you</b>. Copy a backup every few weeks.
+          Nothing you log leaves this device — no account, no server, no analytics. The flip side is
+          that <b>no one else has a copy</b>.
         </p>
       </div>
 
@@ -474,8 +742,14 @@ export default function Profile({ onClose }) {
 
       {scheduling && <MealScheduleSheet onClose={() => setScheduling(false)} />}
 
+      {switching && <GoalSwitcher onClose={() => setSwitching(false)} />}
+
+      {previewEvent && (
+        <ReminderTakeover event={previewEvent} preview onClose={() => setPreviewEvent(null)} />
+      )}
+
       {msg && (
-        <div className="toast">
+        <div className="toast" role="status" aria-live="polite">
           <div className="glass lit"><Check size={18} style={{ color: "var(--accent)", flex: "0 0 auto" }} /><span style={{ fontSize: 14 }}>{msg}</span></div>
         </div>
       )}

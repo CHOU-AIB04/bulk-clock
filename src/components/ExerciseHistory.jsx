@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { X, TrendingUp, Trophy, Info } from "lucide-react";
+import { X, TrendingUp, Trophy, Info, BookOpen, AlertTriangle, Target } from "lucide-react";
 import { historyFor, parseKey } from "../lib/store.js";
 import { bestSet, epley, tonnage, muscleOf } from "../lib/lifting.js";
+import { notesFor } from "../data/exerciseNotes.js";
 
 const r1 = n => Math.round(n * 10) / 10;
 
@@ -85,6 +86,8 @@ function Chart({ points, unit }) {
 
 export default function ExerciseHistory({ exercise, onClose }) {
   const [metric, setMetric] = useState("e1rm");
+  const [tab, setTab] = useState("progress");
+  const notes = notesFor(exercise);
   const history = useMemo(() => historyFor(exercise), [exercise]);
   const meta = METRICS.find(m => m.id === metric);
 
@@ -108,7 +111,36 @@ export default function ExerciseHistory({ exercise, onClose }) {
           <button className="btn-ghost" onClick={onClose} aria-label="Close"><X size={22} /></button>
         </div>
 
-        {history.length === 0 ? (
+        {notes && (
+          <div className="seg" style={{ marginBottom: 16 }}>
+            <button aria-pressed={tab === "progress"} onClick={() => setTab("progress")}>Progress</button>
+            <button aria-pressed={tab === "form"} onClick={() => setTab("form")}>How to do it</button>
+          </div>
+        )}
+
+        {tab === "form" && notes && (
+          <>
+            {[
+              ["Set up", notes.setup, Target],
+              ["The cue that matters", notes.cue, BookOpen],
+              ["What goes wrong", notes.mistake, AlertTriangle]
+            ].map(([label, text, Icon]) => (
+              <div className="card-sm" key={label} style={{ marginBottom: 10 }}>
+                <div className="row" style={{ marginBottom: 8 }}>
+                  <Icon size={16} style={{ color: label === "What goes wrong" ? "var(--warn)" : "var(--accent-text)" }} />
+                  <span className="caps faint" style={{ fontSize: 10 }}>{label}</span>
+                </div>
+                <p style={{ fontSize: 14.5, margin: 0, lineHeight: 1.55 }}>{text}</p>
+              </div>
+            ))}
+            <p className="note" style={{ marginTop: 6 }}>
+              Written rather than filmed on purpose — it works offline, adds nothing to the app size,
+              and is faster to read between sets than a video is to watch.
+            </p>
+          </>
+        )}
+
+        {tab === "progress" && (history.length === 0 ? (
           <div className="empty">
             <span className="empty-ico"><TrendingUp size={24} /></span>
             No sets logged for this movement yet. Log a session and the chart fills in.
@@ -170,7 +202,7 @@ export default function ExerciseHistory({ exercise, onClose }) {
               to go and test it.
             </p>
           </>
-        )}
+        ))}
       </div>
     </div>
   );

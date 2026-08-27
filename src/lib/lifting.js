@@ -176,13 +176,16 @@ export function suggestLoad(exerciseName, prescribedReps, dateKey) {
 export function muscleOf(exerciseName) {
   const meta = EX_BY_NAME[String(exerciseName || "").toLowerCase()];
   if (meta) return meta.muscle;
+  // Word boundaries matter here: a bare /ab/ matches "unrecognisable", and a
+  // custom movement was being filed under Core because of it.
   const n = String(exerciseName || "").toLowerCase();
-  if (/squat|leg|lunge|calf|deadlift|glute|hip thrust/.test(n)) return "Legs";
-  if (/bench|chest|fly|dip|push-?up|press.*chest/.test(n)) return "Chest";
-  if (/row|pull|lat|chin|shrug/.test(n)) return "Back";
-  if (/shoulder|press|lateral|delt|face pull/.test(n)) return "Shoulders";
-  if (/curl|tricep|extension|skull/.test(n)) return "Arms";
-  if (/crunch|plank|ab|core|twist/.test(n)) return "Core";
+  if (/\b(squat|leg|legs|lunge|calf|calves|deadlift|glute|glutes|hip thrust|rdl)\b/.test(n)) return "Legs";
+  if (/\b(bench|chest|fly|flye|dip|dips|push-?ups?|pec)\b/.test(n)) return "Chest";
+  if (/\b(row|rows|pull-?ups?|pulldown|lat|lats|chin-?ups?|shrug|shrugs)\b/.test(n)) return "Back";
+  if (/\b(shoulder|shoulders|overhead|lateral|delt|delts|face pull|upright row)\b/.test(n)) return "Shoulders";
+  if (/\b(curl|curls|tricep|triceps|bicep|biceps|skull|pushdown|extension)\b/.test(n)) return "Arms";
+  if (/\b(crunch|crunches|plank|abs?|core|twist|rollout|sit-?ups?)\b/.test(n)) return "Core";
+  if (/\b(run|running|bike|cycling|row erg|jump rope|burpee|cardio|treadmill)\b/.test(n)) return "Cardio";
   return "Other";
 }
 

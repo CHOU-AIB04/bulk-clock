@@ -132,11 +132,19 @@
 html, body, #root { margin: 0; height: 100%; }
 ::-webkit-scrollbar { display: none; }
 
+html {
+  /* Honour the system font-size setting rather than pinning to 16px. Android's
+     accessibility scale is the single most-used accessibility feature there is,
+     and an app that ignores it is unusable for a lot of people. */
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: var(--bg);
   color: var(--on-surface);
   font-family: var(--body);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -146,8 +154,32 @@ body {
 
 button { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; }
 input, select, textarea { font: inherit; color: var(--on-surface); }
-button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="switch"]:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Windows high-contrast mode strips background colours; keep the borders. */
+@media (forced-colors: active) {
+  .btn, .chip, .card, .card-sm, .list-row, .checkrow { border: 1px solid; }
+  .bar > i, .vol-bar > i { forced-color-adjust: none; background: Highlight; }
+}
+
+/* Anything interactive should be at least 44px in its smallest dimension. */
+.icon-btn { min-width: 40px; min-height: 40px; }
+.yesno button { min-width: 44px; min-height: 40px; }
+.chip { min-height: 40px; display: inline-flex; align-items: center; }
+.seg button { min-height: 42px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
 /* ── type scale ───────────────────────────────────────── */
@@ -158,7 +190,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]
 .stat { font-family: var(--head); font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .stat-xl { font-family: var(--head); font-size: 46px; font-weight: 700; line-height: 0.95; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
 .stat-sm { font-family: var(--head); font-size: 18px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.caps { font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: 0.12em; text-transform: uppercase; }
+.caps { font-size: 11px; font-weight: 700; line-height: 1.15; letter-spacing: 0.12em; text-transform: uppercase; }
 .body-lg { font-size: 17px; line-height: 1.6; }
 .dim { color: var(--on-surface-variant); }
 .faint { color: var(--outline); }
@@ -531,6 +563,108 @@ select.input {
 .vol-bar .band { position: absolute; top: 0; bottom: 0; background: var(--accent-a15); }
 .vol-bar > i { position: relative; display: block; height: 100%; border-radius: 999px; transition: width 0.5s var(--ease); }
 
+/* ── right-to-left ────────────────────────────────────── */
+/*
+   Most of the layout is flex or grid and mirrors on its own once `dir` is set.
+   These are the places that pin to a physical side and have to be told.
+*/
+[dir="rtl"] .search-wrap > svg { left: auto; right: 17px; }
+[dir="rtl"] .search-wrap .input { padding-left: 16px; padding-right: 48px; }
+[dir="rtl"] .note { border-left: 1px solid var(--hairline); border-right: 3px solid var(--accent); border-radius: var(--r) 0 0 var(--r); }
+[dir="rtl"] .note.warn { border-right-color: var(--warn); border-left-color: var(--hairline); }
+[dir="rtl"] .note.danger { border-right-color: var(--danger); border-left-color: var(--hairline); }
+[dir="rtl"] .tl { padding-left: 0; padding-right: 30px; }
+[dir="rtl"] .tl::before { left: auto; right: 9px; }
+[dir="rtl"] .tl-item::before { left: auto; right: -26px; }
+[dir="rtl"] .photo-edit { right: auto; left: 5px; }
+[dir="rtl"] .fab { right: auto; left: 18px; }
+[dir="rtl"] select.input {
+  padding-right: 16px; padding-left: 40px;
+  background-position: 20px 50%, 26px 50%;
+}
+[dir="rtl"] .list-row .v,
+[dir="rtl"] .checkrow .yesno { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .list-row .v { text-align: left; }
+[dir="rtl"] .planned-row { text-align: right; }
+/* Numbers stay left-to-right inside Arabic text — a weight is not a word. */
+[dir="rtl"] .tnum, [dir="rtl"] .stat, [dir="rtl"] .stat-sm, [dir="rtl"] .stat-xl,
+[dir="rtl"] input[type="number"], [dir="rtl"] input[type="time"] { direction: ltr; }
+
+/* ── full-screen reminder ─────────────────────────────── */
+.takeover {
+  position: fixed; inset: 0; z-index: 90;
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--accent-a15), transparent 60%),
+    var(--bg);
+  display: flex; flex-direction: column;
+  animation: takeoverIn 0.42s var(--ease);
+  overscroll-behavior: contain;
+}
+@keyframes takeoverIn {
+  from { opacity: 0; transform: scale(1.04); }
+  to { opacity: 1; transform: none; }
+}
+.takeover-in {
+  flex: 1; display: flex; flex-direction: column;
+  max-width: 620px; width: 100%; margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top)) 22px calc(22px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.takeover-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.takeover-clock {
+  font-family: var(--head); font-size: 17px; font-weight: 700;
+  color: var(--on-surface-variant); letter-spacing: -0.02em;
+}
+.takeover-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 26px 0; }
+.takeover-ico {
+  width: 76px; height: 76px; border-radius: 26px; display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--accent), var(--accent-deep));
+  color: var(--on-accent); box-shadow: var(--glow-strong);
+}
+.takeover-title { margin: 10px 0 0; letter-spacing: -0.035em; }
+.takeover-when {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 18px;
+  padding: 9px 16px; border-radius: 999px; align-self: flex-start;
+  background: var(--surface-high); color: var(--on-surface);
+  font-family: var(--head); font-weight: 700; font-size: 15px;
+}
+.takeover-sub { color: var(--on-surface-variant); font-size: 15.5px; line-height: 1.6; margin: 22px 0 0; max-width: 34ch; }
+.takeover-sub b { color: var(--on-surface); font-weight: 700; }
+.takeover-actions { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; }
+.takeover-cta { padding: 17px 24px; font-size: 16px; }
+.takeover-note { font-size: 11.5px; line-height: 1.5; margin: 6px 0 0; }
+
+.planned-row {
+  display: flex; align-items: center; gap: 10px;
+  margin: 6px 0 8px; padding: 10px 12px;
+  border-radius: var(--r); border: 1px dashed var(--accent-a40);
+  background: var(--accent-a10);
+}
+
+/* ── calendar ─────────────────────────────────────────── */
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-dow {
+  text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--outline); padding-bottom: 4px;
+}
+.cal-day {
+  position: relative; aspect-ratio: 1; border-radius: 10px;
+  background: var(--surface-high); border: 1px solid transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  transition: 0.18s var(--ease);
+}
+.cal-day:disabled { background: transparent; border: 1px dashed var(--outline-variant); opacity: 0.45; }
+.cal-day .cal-n { font-family: var(--head); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal-day.some { background: var(--surface-highest); }
+.cal-day.half { background: var(--accent-a40); color: var(--on-accent); }
+.cal-day.hit { background: var(--accent); color: var(--on-accent); }
+.cal-day.today { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.cal-day.sel { border-color: var(--on-surface); }
+.cal-dots { display: flex; gap: 3px; height: 5px; }
+.cal-dots i { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.cal-dots i.t { background: var(--info); }
+.cal-dots i.w { background: var(--warn); }
+
 /* ── plates ───────────────────────────────────────────── */
 .plate {
   display: grid; place-items: center; min-width: 42px; height: 42px; padding: 0 8px;
@@ -609,3 +743,16 @@ select.input {
 .spin { animation: spin 0.9s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Some people find the glass panels hard to read; honour the OS preference. */
+@media (prefers-contrast: more) {
+  :root {
+    --on-surface-variant: var(--on-surface);
+    --outline: var(--on-surface-variant);
+    --hairline: var(--outline-variant);
+  }
+  .appbar, nav.tabs, .sheet-bg { backdrop-filter: none; }
+  .appbar, nav.tabs { background: var(--surface-lowest); }
+  .glass { background: var(--surface); background-image: none; }
+  .dim, .faint { color: var(--on-surface); }
+}

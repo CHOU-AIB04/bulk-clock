@@ -13,6 +13,7 @@ import {
 import FoodAvatar, { MealAvatar } from "./FoodAvatar.jsx";
 import CopyDaySheet from "./CopyDaySheet.jsx";
 import MealPortion from "./MealPortion.jsx";
+import { tapMedium } from "../lib/haptics.js";
 
 const r0 = n => Math.round(n);
 const r1 = n => Math.round(n * 10) / 10;
@@ -419,7 +420,13 @@ function Quick({ onAdd }) {
 
 /* ── the sheet ────────────────────────────────────────── */
 
-export default function AddSheet({ dateKey, slot, onClose }) {
+/**
+ * `mode` is either "log" — the entry lands in today's totals — or "plan", where
+ * the same picker records an intention for a future day instead. Everything
+ * below is identical either way except where the chosen item ends up, which is
+ * the point: planning a meal should not be a different skill from logging one.
+ */
+export default function AddSheet({ dateKey, slot, onClose, mode = "log", onPlan }) {
   const meals = useStore(s => s.meals);
   useStore(s => s.log);
   useStore(s => s.favourites);
@@ -442,16 +449,33 @@ export default function AddSheet({ dateKey, slot, onClose }) {
   const fmap = foodMap();
   const mealTotals = useMemo(() => Object.fromEntries(meals.map(m => [m.id, mealServingMacros(m)])), [meals]);
 
+  const planning = mode === "plan";
+
+  /** Where a chosen item ends up: today's log, or a future day's plan. */
+  function commitFood(food, amount, unit) {
+    if (planning) onPlan({ kind: "food", ref: food.id, amount, unit });
+    else logFood(dateKey, slot.id, food, amount, unit);
+    onClose();
+  }
+
+  function commitMeal(meal, portions = 1) {
+    if (planning) onPlan({ kind: "meal", ref: meal.id, amount: portions, unit: "serving" });
+    else logMeal(dateKey, slot.id, meal, portions);
+    onClose();
+  }
+
   /** One tap logs it at the portion you last used. */
   function quickLog(entry) {
+    tapMedium();
     if (entry.kind === "meal") {
       const meal = meals.find(m => m.id === entry.ref);
-      if (meal) logMeal(dateKey, slot.id, meal);
+      if (meal) commitMeal(meal, entry.amount || 1);
+      else onClose();
     } else {
       const food = getFood(entry.ref);
-      if (food) logFood(dateKey, slot.id, food, entry.amount, entry.unit);
+      if (food) commitFood(food, entry.amount, entry.unit);
+      else onClose();
     }
-    onClose();
   }
 
   /** The same row, but stop at the portion picker instead of logging. */
@@ -489,7 +513,8 @@ export default function AddSheet({ dateKey, slot, onClose }) {
       <Portion
         food={picking} initial={pickInitial}
         onBack={() => { setPicking(null); setPickInitial(null); }}
-        onDone={(food, amount, unit) => { logFood(dateKey, slot.id, food, amount, unit); onClose(); }}
+        ctaLabel={planning ? "Add to the plan" : "Add to log"}
+        onDone={(food, amount, unit) => commitFood(food, amount, unit)}
       />
     );
   }
@@ -502,7 +527,8 @@ export default function AddSheet({ dateKey, slot, onClose }) {
     return wrap(
       <MealPortion
         meal={pickingMeal} onBack={() => setPickingMeal(null)}
-        onDone={(meal, portions) => { logMeal(dateKey, slot.id, meal, portions); onClose(); }}
+        ctaLabel={planning ? "Add to the plan" : "Add to log"}
+        onDone={(meal, portions) => commitMeal(meal, portions)}
       />
     );
   }
@@ -520,7 +546,7 @@ export default function AddSheet({ dateKey, slot, onClose }) {
   return wrap(
     <>
       <div className="sheet-h">
-        <h3 className="h3">Add to {slot.name}</h3>
+        <h3 className="h3">{planning ? "Plan" : "Add to"} {slot.name}</h3>
         <button className="btn-ghost" onClick={onClose} aria-label="Close"><X size={22} /></button>
       </div>
 
@@ -529,8 +555,7 @@ export default function AddSheet({ dateKey, slot, onClose }) {
           ...(hasQuick ? [["recent", "Quick add", History]] : []),
           ["meals", "My meals", BookOpen],
           ["foods", "Ingredients", Search],
-          ["scan", "Scan", ScanLine],
-          ["quick", "Custom", Zap]
+          ...(planning ? [] : [["scan", "Scan", ScanLine], ["quick", "Custom", Zap]])
         ].map(([k, l, Ico]) => (
           <button key={k} className="chip" aria-pressed={tab === k} onClick={() => setTab(k)}>
             <Ico size={13} style={{ marginRight: 5, verticalAlign: -2 }} />{l}
@@ -540,6 +565,7 @@ export default function AddSheet({ dateKey, slot, onClose }) {
 
       {tab === "recent" && (
         <>
+          {!planning && (
           <button className="list-row" onClick={() => setCopying(true)}>
             <span className="ico"><History size={19} /></span>
             <span className="grow">
@@ -547,6 +573,7 @@ export default function AddSheet({ dateKey, slot, onClose }) {
               <span className="d">Lift the whole meal off a day you already logged</span>
             </span>
           </button>
+          )}
 
           <p className="note" style={{ margin: "14px 0 16px" }}>
             <b>One tap logs it</b> at the portion you used last time. The slider button opens the

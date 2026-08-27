@@ -5,6 +5,11 @@ out/
 .DS_Store
 .env
 .vite/
+
+# Vite writes one of these beside the config on every run and usually deletes it
+# a moment later. Inside OneDrive that delete often fails, so they accumulate.
+vite.config.js.timestamp-*.mjs
+vite.config.*.timestamp-*
 *.log
 .idea/
 .vscode/

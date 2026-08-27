@@ -54,6 +54,11 @@
          send the user to the exemption screen rather than only warning them. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- A meal or session reminder that takes over the screen, the way a
+         calendar alert does, rather than a banner that scrolls past. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Meal reminders must land at the exact minute, including in Doze. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />

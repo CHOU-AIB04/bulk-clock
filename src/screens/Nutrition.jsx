@@ -13,9 +13,12 @@ import { Portion, FoodList, FoodEditor } from "../components/AddSheet.jsx";
 import FoodAvatar, { MealAvatar } from "../components/FoodAvatar.jsx";
 import { PhotoPicker, Photo } from "../components/Photo.jsx";
 import NutrientPanel from "../components/NutrientPanel.jsx";
+import Supplements from "../components/Supplements.jsx";
+import FastingCard from "../components/FastingCard.jsx";
 import { NUTRIENT_META } from "../data/nutrients.js";
 import { nutrientsForGrams } from "../data/nutrients.js";
 import Ring from "../components/Ring.jsx";
+import { t } from "../lib/i18n.js";
 
 const r0 = n => Math.round(n);
 const r1 = n => Math.round(n * 10) / 10;
@@ -287,7 +290,7 @@ export default function Nutrition() {
       <div className="card">
         <div className="row">
           <div className="grow">
-            <div className="caps faint">Today's intake</div>
+            <div className="caps faint">{t("diet.intake")}</div>
             <div style={{ marginTop: 10 }}>
               <span className="stat neon">{r0(totals.kcal)}</span>
               <span className="dim" style={{ fontSize: 15 }}> / {targets.kcal}</span>
@@ -307,9 +310,9 @@ export default function Nutrition() {
       </div>
 
       <div className="seg" style={{ marginTop: 18 }}>
-        <button aria-pressed={view === "meals"} onClick={() => setView("meals")}>My meals</button>
-        <button aria-pressed={view === "db"} onClick={() => setView("db")}>Ingredients</button>
-        <button aria-pressed={view === "nutrients"} onClick={() => setView("nutrients")}>Nutrients</button>
+        <button aria-pressed={view === "meals"} onClick={() => setView("meals")}>{t("diet.myMeals")}</button>
+        <button aria-pressed={view === "db"} onClick={() => setView("db")}>{t("diet.ingredients")}</button>
+        <button aria-pressed={view === "nutrients"} onClick={() => setView("nutrients")}>{t("diet.nutrients")}</button>
       </div>
 
       {view !== "nutrients" && (
@@ -323,6 +326,18 @@ export default function Nutrition() {
 
       {view === "nutrients" && (
         <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 20 }}>
+            <FastingCard />
+          </div>
+
+          <div className="sect-h">
+            <h2 className="h3">{t("diet.supplements")}</h2>
+          </div>
+          <Supplements />
+
+          <div className="sect-h" style={{ marginTop: 30 }}>
+            <h2 className="h3">Nutrients today</h2>
+          </div>
           <NutrientPanel dateKey={todayKey()} />
         </div>
       )}
@@ -333,11 +348,11 @@ export default function Nutrition() {
             className="btn btn-primary btn-wide" style={{ marginTop: 16 }}
             onClick={() => setEditing({ id: newMealId(), name: "", items: [], existing: false })}
           >
-            <Plus size={18} /> Build a new meal
+            <Plus size={18} /> {t("diet.buildMeal")}
           </button>
 
           <div className="sect">
-            <div className="sect-h"><h2 className="h3">Saved meals</h2><span className="caps faint">{meals.length}</span></div>
+            <div className="sect-h"><h2 className="h3">{t("diet.savedMeals")}</h2><span className="caps faint">{meals.length}</span></div>
 
             {meals.length === 0 && (
               <div className="empty">
@@ -394,7 +409,7 @@ export default function Nutrition() {
       {view === "db" && (
         <div style={{ marginTop: 16 }}>
           <button className="btn btn-primary btn-wide" style={{ marginBottom: 16 }} onClick={() => setEditFood({ food: null, name: "" })}>
-            <Plus size={18} /> Add my own food
+            <Plus size={18} /> {t("diet.addFood")}
           </button>
 
           {customFoods.length > 0 && cat === "All" && !q && (

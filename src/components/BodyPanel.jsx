@@ -6,6 +6,7 @@ import {
   photosFor, setProgressPhoto, photoDays
 } from "../lib/store.js";
 import { Photo, PhotoPicker } from "./Photo.jsx";
+import { lengthUnit, toDisplayLength, fromDisplayLength } from "../lib/units.js";
 
 const r1 = n => Math.round(n * 10) / 10;
 const shortDate = k => parseKey(k).toLocaleDateString(undefined, { day: "numeric", month: "short" });
@@ -67,7 +68,7 @@ export default function BodyPanel() {
       {/* ── tape ── */}
       <div className="sect-h">
         <h2 className="h4"><Ruler size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Measurements</h2>
-        <span className="caps faint">cm</span>
+        <span className="caps faint">{lengthUnit()}</span>
       </div>
 
       {MEASUREMENTS.map(m => {
@@ -80,7 +81,7 @@ export default function BodyPanel() {
                 <span className="h4" style={{ display: "block" }}>{m.label}</span>
                 <span className="dim" style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                   {summary
-                    ? `${summary.latest} cm on ${shortDate(summary.at)}${summary.change != null ? ` · ${summary.change >= 0 ? "+" : ""}${summary.change} since ${shortDate(summary.since)}` : ""}`
+                    ? `${toDisplayLength(summary.latest)} ${lengthUnit()} on ${shortDate(summary.at)}${summary.change != null ? ` · ${summary.change >= 0 ? "+" : ""}${toDisplayLength(summary.change)} since ${shortDate(summary.since)}` : ""}`
                     : "Not measured yet"}
                 </span>
               </span>
@@ -88,9 +89,9 @@ export default function BodyPanel() {
               <input
                 className="input num" type="number" inputMode="decimal" step="0.1" min="0"
                 style={{ flex: "0 0 84px", padding: "10px 8px", textAlign: "center" }}
-                value={values[m.key] ?? ""} placeholder="—"
-                aria-label={`${m.label} in centimetres`}
-                onChange={e => setMeasurement(dateKey, m.key, e.target.value)}
+                value={values[m.key] == null ? "" : toDisplayLength(values[m.key])} placeholder="—"
+                aria-label={`${m.label} in ${lengthUnit()}`}
+                onChange={e => setMeasurement(dateKey, m.key, e.target.value === "" ? "" : fromDisplayLength(e.target.value))}
               />
             </div>
             <p className="dim" style={{ fontSize: 11.5, margin: "10px 0 0" }}>{m.hint}</p>
