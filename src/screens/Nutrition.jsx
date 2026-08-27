@@ -13,6 +13,7 @@ import { Portion, FoodList, FoodEditor } from "../components/AddSheet.jsx";
 import FoodAvatar, { MealAvatar } from "../components/FoodAvatar.jsx";
 import { PhotoPicker, Photo } from "../components/Photo.jsx";
 import NutrientPanel from "../components/NutrientPanel.jsx";
+import SwipeRow from "../components/SwipeRow.jsx";
 import Supplements from "../components/Supplements.jsx";
 import FastingCard from "../components/FastingCard.jsx";
 import { NUTRIENT_META } from "../data/nutrients.js";
@@ -371,7 +372,8 @@ export default function Nutrition() {
               const t = mealServingMacros(m);
               const makes = mealServings(m);
               return (
-                <div key={m.id} className="list-row">
+                <SwipeRow key={m.id} label={m.name} onDelete={() => deleteMeal(m.id)}>
+                <div className="list-row">
                   <MealAvatar meal={m} foodById={fmap} />
                   <button
                     className="grow" style={{ textAlign: "left", minWidth: 0 }}
@@ -394,6 +396,7 @@ export default function Nutrition() {
                     <MoreVertical size={18} />
                   </button>
                 </div>
+                </SwipeRow>
               );
             })}
 

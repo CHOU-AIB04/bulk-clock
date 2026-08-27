@@ -563,6 +563,86 @@ select.input {
 .vol-bar .band { position: absolute; top: 0; bottom: 0; background: var(--accent-a15); }
 .vol-bar > i { position: relative; display: block; height: 100%; border-radius: 999px; transition: width 0.5s var(--ease); }
 
+/* ── swipe to delete ──────────────────────────────────── */
+.swipe-row { position: relative; overflow: hidden; border-radius: var(--r-md); }
+.swipe-row.gone { max-height: 0; opacity: 0; transition: max-height 0.22s var(--ease), opacity 0.18s linear; }
+.swipe-behind {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end;
+  gap: 10px; padding: 0 20px; border-radius: var(--r-md);
+  background: var(--danger-bg); color: var(--danger);
+  font-size: 12.5px; font-weight: 600;
+  pointer-events: none;
+  transition: opacity 0.15s linear;
+}
+[dir="rtl"] .swipe-behind { justify-content: flex-start; }
+/* Opaque, so the red panel behind is only ever visible where the row has
+   actually moved off it. Rows with their own card background paint over this. */
+.swipe-front { position: relative; will-change: transform; background: var(--bg); }
+/* The row inside already has its own margin; the wrapper takes it over so the
+   red panel lines up with the card rather than the gap below it. */
+.swipe-row > .swipe-front > * { margin-bottom: 0 !important; }
+.swipe-row { margin-bottom: 9px; }
+
+/* ── route map ────────────────────────────────────────── */
+.routemap {
+  position: relative; overflow: hidden; width: 100%;
+  border-radius: var(--r-md); background: var(--surface-high);
+  border: 1px solid var(--hairline);
+}
+.routemap-tile {
+  position: absolute; width: 256px; height: 256px;
+  image-rendering: auto; user-select: none; pointer-events: none;
+}
+/* OpenStreetMap's standard tiles are light; this sinks them so the lime route
+   reads on top without needing a paid dark tile provider. */
+.routemap-scrim {
+  position: absolute; inset: 0; pointer-events: none;
+  background: rgba(10, 11, 13, 0.62);
+  backdrop-filter: saturate(0.55);
+}
+:root[data-theme="light"] .routemap-scrim { background: rgba(255, 255, 255, 0.34); backdrop-filter: saturate(0.8); }
+.routemap-svg { position: absolute; inset: 0; }
+.routemap-line { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.routemap-glow { fill: none; stroke: var(--accent); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; opacity: 0.22; }
+.routemap-start { fill: var(--accent-bright); stroke: var(--bg); stroke-width: 3; }
+.routemap-end { fill: var(--bg); stroke: var(--accent); stroke-width: 3.5; }
+.routemap-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  color: var(--outline); font-size: 13px;
+}
+.routemap-credit, .routemap-offline {
+  position: absolute; right: 8px; bottom: 6px;
+  font-size: 9.5px; letter-spacing: 0.04em; color: var(--on-surface-variant);
+  background: var(--glass); padding: 3px 7px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+[dir="rtl"] .routemap-credit, [dir="rtl"] .routemap-offline { right: auto; left: 8px; }
+
+/* ── live activity ────────────────────────────────────── */
+.live-shell {
+  position: fixed; inset: 0; z-index: 85; display: flex; flex-direction: column;
+  background: radial-gradient(120% 70% at 50% 0%, var(--accent-a10), transparent 60%), var(--bg);
+  animation: fade 0.3s var(--ease);
+}
+.live-in {
+  flex: 1; overflow-y: auto; max-width: 620px; width: 100%; margin: 0 auto;
+  padding: calc(16px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+}
+.live-primary {
+  font-family: var(--head); font-weight: 700; letter-spacing: -0.045em;
+  font-size: clamp(58px, 19vw, 92px); line-height: 0.94; font-variant-numeric: tabular-nums;
+}
+.live-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.live-stat { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r); padding: 13px; }
+.live-stat .v { font-family: var(--head); font-weight: 700; font-size: 21px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.gps-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.gps-dot.good { background: var(--accent); box-shadow: 0 0 8px var(--accent-a40); }
+.gps-dot.weak { background: var(--warn); }
+.gps-dot.none { background: var(--danger); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.recording-dot { animation: pulse 1.6s ease-in-out infinite; }
+
 /* ── right-to-left ────────────────────────────────────── */
 /*
    Most of the layout is flex or grid and mirrors on its own once `dir` is set.

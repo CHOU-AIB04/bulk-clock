@@ -24,6 +24,33 @@
 
         </activity>
 
+        <!-- Keeps an activity recording, and its card on the lock screen, while
+             the phone is in a pocket. -->
+        <service
+            android:name=".LiveActivityService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- Fires when a reminder comes due and posts the full-screen notification. -->
+        <receiver
+            android:name=".AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Android drops every scheduled alarm on restart; this puts them back. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -53,6 +80,15 @@
     <!-- Reminders are useless if Doze defers them by an hour; this lets the app
          send the user to the exemption screen rather than only warning them. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Recording a run, ride or walk. Fine location because a route drawn from
+         coarse location would be a straight line between cell towers. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <!-- A meal or session reminder that takes over the screen, the way a
          calendar alert does, rather than a banner that scrolls past. -->

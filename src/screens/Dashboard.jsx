@@ -10,6 +10,7 @@ import EntryEditor from "../components/EntryEditor.jsx";
 import CopyDaySheet from "../components/CopyDaySheet.jsx";
 import WaterCard from "../components/WaterCard.jsx";
 import MealScheduleSheet from "../components/MealScheduleSheet.jsx";
+import SwipeRow from "../components/SwipeRow.jsx";
 import Planner from "../components/Planner.jsx";
 import FoodAvatar, { MealAvatar } from "../components/FoodAvatar.jsx";
 import {
@@ -387,19 +388,21 @@ export default function Dashboard({ onGo }) {
                 {items.length > 0 && (
                   <div style={{ paddingLeft: 4, marginTop: 2, marginBottom: 6 }}>
                     {items.map(e => (
-                      <div className="entry" key={e.id} style={{ padding: "8px 0" }}>
-                        <button
-                          className="grow dim" style={{ fontSize: 13, textAlign: "left" }}
-                          onClick={() => setEditingEntry(e)}
-                          aria-label={`Edit ${e.name}`}
-                        >
-                          {e.name} <span className="faint">· {e.amount} {e.unit}</span>
-                        </button>
-                        <span className="tnum dim" style={{ fontSize: 12.5 }}>{r0(e.kcal)} kcal</span>
-                        <button className="icon-btn" aria-label={`Remove ${e.name}`} onClick={() => removeEntry(key, e.id)}>
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                      <SwipeRow key={e.id} label={e.name} onDelete={() => removeEntry(key, e.id)}>
+                        <div className="entry" style={{ padding: "8px 0" }}>
+                          <button
+                            className="grow dim" style={{ fontSize: 13, textAlign: "left" }}
+                            onClick={() => setEditingEntry(e)}
+                            aria-label={`Edit ${e.name}`}
+                          >
+                            {e.name} <span className="faint">· {e.amount} {e.unit}</span>
+                          </button>
+                          <span className="tnum dim" style={{ fontSize: 12.5 }}>{r0(e.kcal)} kcal</span>
+                          <button className="icon-btn" aria-label={`Remove ${e.name}`} onClick={() => removeEntry(key, e.id)}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </SwipeRow>
                     ))}
                   </div>
                 )}

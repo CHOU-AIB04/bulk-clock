@@ -288,12 +288,11 @@ export default function Profile({ onClose }) {
           <AlarmClock size={17} /> Show me the full-screen reminder
         </button>
         <p className="note" style={{ marginBottom: 18 }}>
-          <b>When the real one appears:</b> whenever the app is open — or is opened by tapping a
-          notification — and a meal or session is due within your lead time. It checks every 20
-          seconds and each time you come back to the app. It does <b>not</b> take over a locked
-          screen with the app closed; that needs a native Android change, described in
-          <b> android/FULL_SCREEN_REMINDERS.md</b>. What does reach you with the app shut is the
-          heads-up notification, with the same one-tap answers.
+          <b>Two layers.</b> Thirty minutes ahead you get an ordinary notification you can answer
+          from the shade. At the moment itself a real alarm fires — its own sound for meals and for
+          training — and takes over the screen even with the phone locked in a pocket. The button
+          above previews the takeover; the buttons below fire a real one so you can lock the phone
+          and watch it happen.
         </p>
 
         <Toggle
@@ -579,6 +578,16 @@ export default function Profile({ onClose }) {
             </p>
           </div>
         )}
+
+        <Toggle
+          name="Add what I burn back on"
+          desc={
+            settings.addExerciseCalories
+              ? "Recorded runs and rides raise that day's calorie target"
+              : "Recorded activity is shown but doesn't change your target — measured maintenance already includes how much you move"
+          }
+          on={settings.addExerciseCalories} onChange={v => setSetting({ addExerciseCalories: v })}
+        />
 
         <Toggle
           name="Judge the week, not the day"

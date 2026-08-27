@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { ShieldCheck, AlertTriangle, Check, Bell, BatteryCharging, Clock, ChevronRight } from "lucide-react";
+import {
+  ShieldCheck, AlertTriangle, Check, Bell, BatteryCharging, Clock, ChevronRight,
+  Smartphone, AlarmClock, Utensils, Dumbbell
+} from "lucide-react";
 import { useStore, setSetting } from "../lib/store.js";
 import { isNative, ensurePermission, pendingCount } from "../lib/notify.js";
+import {
+  permissions as alarmPermissions, openExactAlarmSettings, openFullScreenSettings,
+  openBatterySettings, testAlarm
+} from "../lib/fullscreenAlarm.js";
 
 /**
  * Why a reminder didn't arrive.
@@ -16,6 +23,7 @@ export default function ReminderHealth() {
   const [permission, setPermission] = useState(null);
   const [pending, setPending] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [alarm, setAlarm] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -30,6 +38,8 @@ export default function ReminderHealth() {
       }
       const n = await pendingCount();
       if (alive) setPending(n);
+      const a = await alarmPermissions();
+      if (alive) setAlarm(a);
     })();
     return () => { alive = false; };
   }, [settings]);
@@ -78,17 +88,42 @@ export default function ReminderHealth() {
         : "Nothing is queued. Turn a reminder type on, or tap Reschedule below."
     },
     {
+      id: "exact",
+      icon: Clock,
+      label: "Exact alarms allowed",
+      ok: !!alarm?.exactAlarms,
+      detail: alarm?.exactAlarms
+        ? "Reminders land on the minute, and Doze cannot defer them."
+        : "Without this Android delivers reminders in a ten-minute window instead of on the minute. Lunch at 13:07 is still useful, but it isn't what you set.",
+      action: alarm?.exactAlarms ? null : {
+        label: "Open the setting",
+        run: openExactAlarmSettings
+      }
+    },
+    {
+      id: "fullscreen",
+      icon: Smartphone,
+      label: "Full-screen reminders allowed",
+      ok: !!alarm?.fullScreen,
+      detail: alarm?.fullScreen
+        ? "A due reminder takes over the screen, even with the phone locked in your pocket."
+        : "Android 14 made this a permission and only grants it automatically to alarm and calling apps. Without it, reminders still arrive — as a card at the top of the screen rather than taking it over.",
+      action: alarm?.fullScreen ? null : {
+        label: "Open the setting",
+        run: openFullScreenSettings
+      }
+    },
+    {
       id: "battery",
       icon: BatteryCharging,
       label: "Battery optimisation off",
-      ok: batteryAcked,
-      unknown: !batteryAcked,
-      detail: batteryAcked
-        ? "You've confirmed this. If reminders still drift, check it again after a system update."
-        : "The app cannot read this setting, only ask. Android → Settings → Apps → Bulk Clock → Battery → Unrestricted. Without it, Doze can delay a reminder by up to an hour once the phone sits idle.",
-      action: batteryAcked ? null : {
-        label: "I've set it to unrestricted",
-        run: () => setSetting({ batteryAcknowledged: true })
+      ok: alarm?.batteryUnrestricted ?? batteryAcked,
+      detail: (alarm?.batteryUnrestricted ?? batteryAcked)
+        ? "Android will not defer this app's alarms while the phone sits idle."
+        : "Doze can delay a reminder by up to an hour once the phone has been still for a while. Set this app to Unrestricted.",
+      action: (alarm?.batteryUnrestricted ?? batteryAcked) ? null : {
+        label: "Open battery settings",
+        run: async () => { await openBatterySettings(); setSetting({ batteryAcknowledged: true }); }
       }
     }
   ];
@@ -141,11 +176,31 @@ export default function ReminderHealth() {
         );
       })}
 
-      <p className="note" style={{ marginTop: 12 }}>
-        Android 13 and later also gate <b>exact alarms</b>. The app requests that permission in its
-        manifest and most devices grant it on install, but a few manufacturers — Xiaomi, Oppo,
-        Huawei — add their own startup manager on top. If reminders arrive late on one of those,
-        the app's autostart setting is the next place to look.
+      {alarm?.supported && (
+        <>
+          <div className="sect-h" style={{ marginTop: 22, marginBottom: 10 }}>
+            <h2 className="h4"><AlarmClock size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Hear it for yourself</h2>
+          </div>
+          <p className="note" style={{ marginBottom: 12 }}>
+            Fires a real alarm in ten seconds, with that kind's own sound.{" "}
+            <b>Lock the phone straight after tapping</b> — that is the whole point, and it is the
+            only way to see the takeover properly.
+          </p>
+          <div className="row wrap" style={{ gap: 10 }}>
+            <button className="btn btn-sm btn-primary" onClick={() => testAlarm("meal", 10)}>
+              <Utensils size={15} /> Test a meal alarm
+            </button>
+            <button className="btn btn-sm btn-quiet" onClick={() => testAlarm("training", 10)}>
+              <Dumbbell size={15} /> Test a training alarm
+            </button>
+          </div>
+        </>
+      )}
+
+      <p className="note" style={{ marginTop: 14 }}>
+        A few manufacturers — Xiaomi, Oppo, Huawei, Samsung — add their own startup manager on top
+        of all this. If reminders still arrive late on one of those, the app's <b>autostart</b>
+        permission is the next place to look.
       </p>
     </div>
   );

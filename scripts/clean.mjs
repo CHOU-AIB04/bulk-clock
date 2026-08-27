@@ -42,7 +42,13 @@ const stamps = fs.readdirSync(root).filter(f => /^vite\.config\.js\.timestamp-.*
 for (const f of stamps) remove(path.join(root, f), f);
 if (stamps.length) console.log(`${stamps.length} leftover vite config timestamp file(s)`);
 
+// The in-tree cache is the one OneDrive locks, so it always goes.
 remove(path.join(root, "node_modules", ".vite"), "node_modules/.vite");
-remove(path.join(os.tmpdir(), "vite-cache-bulkclock"), "the out-of-tree Vite cache");
+
+// The out-of-tree cache is not the problem and clearing it makes the next build
+// twice as slow, so it only goes when explicitly asked for.
+if (process.argv.includes("--all")) {
+  remove(path.join(os.tmpdir(), "vite-cache-bulkclock"), "the dependency cache (next build will be slower)");
+}
 
 console.log(removed ? `\nCleaned ${removed} item(s). Run npm run dev again.` : "\nNothing to clean.");

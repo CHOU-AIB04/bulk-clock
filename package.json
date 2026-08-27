@@ -12,7 +12,8 @@
     "sync": "npm run build && cap sync android",
     "apk": "npm run sync && cd android && ./gradlew assembleDebug",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "clean:all": "node scripts/clean.mjs --all"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",

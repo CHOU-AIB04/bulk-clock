@@ -45,6 +45,10 @@ const DEFAULT_STATE = {
   measurements: {},
   /** plan[dateKey][slotId] = [{ id, kind, ref, amount, unit }] — intent, not history. */
   plan: {},
+  /** Finished outdoor activities: runs, rides, walks. */
+  activities: [],
+  /** The one currently being recorded, or null. */
+  live: null,
   /** Things you take rather than eat: creatine, whey, vitamin D. */
   supplements: [],
   /** supplementLog[dateKey] = { [supplementId]: true } */
@@ -95,7 +99,9 @@ const DEFAULT_STATE = {
     notifySupplements: true,
     lastBackupAt: 0,
     /** null means "follow the phone" until the user picks one. */
-    language: null
+    language: null,
+    /** Add what you burned back onto the day's calorie target. Off on purpose. */
+    addExerciseCalories: false
   }
 };
 
@@ -120,7 +126,9 @@ function migrate(parsed) {
     reminders: parsed.reminders || {},
     supplements: parsed.supplements || [],
     supplementLog: parsed.supplementLog || {},
-    plan: parsed.plan || {}
+    plan: parsed.plan || {},
+    activities: parsed.activities || [],
+    live: parsed.live || null
   };
   // v2 had no editable program — adopt the bundled split as the starting week.
   if (!next.program || !next.program.days) next.program = structuredClone(DEFAULT_PROGRAM);
@@ -1266,7 +1274,27 @@ export function orphanEntries(key) {
  */
 export function targetsFor(key = todayKey()) {
   const p = state.profile;
-  const base = { kcal: p.kcalTarget, p: p.pTarget, c: p.cTarget, f: p.fTarget, dayType: null, delta: 0 };
+
+  /**
+   * Calories burned in a recorded activity are NOT added back by default.
+   *
+   * Measured maintenance already contains however much you normally move, so
+   * adding a run on top counts the same energy twice — and exercise-calorie
+   * estimates are the least accurate number in any tracker. The switch exists
+   * because plenty of people want it anyway, and being told "no" by an app is
+   * worse than being given the choice with the reason attached.
+   */
+  const burned = state.settings.addExerciseCalories ? activityCalories(key) : 0;
+
+  const base = {
+    kcal: p.kcalTarget + burned,
+    p: p.pTarget,
+    c: p.cTarget + (burned > 0 ? Math.round(burned / 4) : 0),
+    f: p.fTarget,
+    dayType: null,
+    delta: 0,
+    burned
+  };
   if (!state.settings.dayTypeTargets) return base;
 
   const trainingDays = Object.keys(state.program?.days || {})
@@ -1281,10 +1309,10 @@ export function targetsFor(key = todayKey()) {
 
   const isTraining = !!workoutFor(key);
   const delta = isTraining ? up : -down;
-  const kcal = Math.max(1000, p.kcalTarget + delta);
+  const kcal = Math.max(1000, p.kcalTarget + delta + burned);
 
   // Carbohydrate absorbs the whole swing.
-  const carbs = Math.max(0, Math.round(p.cTarget + delta / 4));
+  const carbs = Math.max(0, Math.round(p.cTarget + delta / 4 + burned / 4));
 
   return {
     kcal,
@@ -1292,7 +1320,8 @@ export function targetsFor(key = todayKey()) {
     c: carbs,
     f: p.fTarget,
     dayType: isTraining ? "training" : "rest",
-    delta
+    delta,
+    burned
   };
 }
 
@@ -1840,4 +1869,191 @@ export function plannedSessionFor(key = todayKey()) {
   });
 
   return { ...day, ex, phase };
+}
+
+/* ── activities ──────────────────────────────────────────── */
+
+import {
+  typeOf as activityType, acceptPoint, trackDistance, elevationGain,
+  paceSecPerKm, splits as computeSplits, estimateCalories
+} from "./activity.js";
+
+/**
+ * A recording in progress.
+ *
+ * Kept in the persisted store rather than component state on purpose: a run
+ * survives the app being backgrounded, the screen locking, and even the process
+ * being killed and restarted. Losing a half-finished run because someone opened
+ * WhatsApp would be unforgivable.
+ */
+export function startActivity(typeId) {
+  const id = uid();
+  update(d => {
+    d.live = {
+      id,
+      type: typeId,
+      startedAt: Date.now(),
+      pausedAt: null,
+      pausedMs: 0,
+      points: [],
+      note: ""
+    };
+  });
+  return id;
+}
+
+/**
+ * Add a GPS fix.
+ *
+ * Rejected fixes are dropped silently — this is called several times a second
+ * and most of what a phone reports while you stand at a traffic light is noise.
+ */
+export function pushPoint(point) {
+  if (!state.live || state.live.pausedAt) return false;
+
+  const pts = state.live.points;
+  const prev = pts.length ? pts[pts.length - 1] : null;
+  const max = activityType(state.live.type).maxSpeedKmh;
+  if (!acceptPoint(prev, point, max)) return false;
+
+  update(d => {
+    d.live.points.push({
+      lat: +point.lat.toFixed(6),          // ~11 cm; more is storing GPS noise
+      lng: +point.lng.toFixed(6),
+      t: point.t,
+      alt: point.alt == null ? null : Math.round(point.alt * 10) / 10,
+      acc: point.acc == null ? null : Math.round(point.acc)
+    });
+  });
+  return true;
+}
+
+export function pauseActivity() {
+  update(d => {
+    if (d.live && !d.live.pausedAt) d.live.pausedAt = Date.now();
+  });
+}
+
+export function resumeActivity() {
+  update(d => {
+    if (d.live?.pausedAt) {
+      d.live.pausedMs += Date.now() - d.live.pausedAt;
+      d.live.pausedAt = null;
+    }
+  });
+}
+
+export function setActivityNote(note) {
+  update(d => { if (d.live) d.live.note = note; });
+}
+
+/** Live numbers, recomputed from the track. */
+export function liveStats(now = Date.now()) {
+  const live = state.live;
+  if (!live) return null;
+
+  const elapsed = now - live.startedAt;
+  const paused = live.pausedMs + (live.pausedAt ? now - live.pausedAt : 0);
+  const moving = Math.max(0, elapsed - paused);
+
+  const distanceM = trackDistance(live.points);
+
+  return {
+    id: live.id,
+    type: live.type,
+    paused: !!live.pausedAt,
+    elapsedMs: elapsed,
+    movingMs: moving,
+    distanceM,
+    paceSecPerKm: paceSecPerKm(distanceM, moving),
+    speedKmh: moving > 0 ? (distanceM / 1000) / (moving / 3600000) : 0,
+    elevationM: elevationGain(live.points),
+    calories: estimateCalories(live.type, state.profile.weight, moving, distanceM),
+    points: live.points,
+    fixes: live.points.length
+  };
+}
+
+/**
+ * Stop recording and keep it.
+ *
+ * A recording with nothing in it is discarded rather than saved — an accidental
+ * tap should not leave a zero-metre run in the history for ever.
+ */
+export function finishActivity() {
+  const live = state.live;
+  if (!live) return null;
+
+  const stats = liveStats();
+  const tooShort = stats.movingMs < 30000 && stats.distanceM < 50;
+
+  if (tooShort) {
+    update(d => { d.live = null; });
+    return null;
+  }
+
+  const record = {
+    id: live.id,
+    type: live.type,
+    date: dkey(logicalDate(new Date(live.startedAt))),
+    startedAt: live.startedAt,
+    endedAt: Date.now(),
+    durationMs: stats.elapsedMs,
+    movingMs: stats.movingMs,
+    distanceM: Math.round(stats.distanceM),
+    elevationM: Math.round(stats.elevationM),
+    paceSecPerKm: stats.paceSecPerKm,
+    calories: stats.calories,
+    splits: computeSplits(live.points),
+    points: live.points,
+    note: live.note || ""
+  };
+
+  update(d => {
+    d.activities.unshift(record);
+    d.live = null;
+  });
+  return record;
+}
+
+export function discardActivity() {
+  update(d => { d.live = null; });
+}
+
+export function deleteActivity(id) {
+  update(d => { d.activities = d.activities.filter(a => a.id !== id); });
+}
+
+export function activitiesOn(key) {
+  return state.activities.filter(a => a.date === key);
+}
+
+/** What a day's activities burned, as an estimate. */
+export function activityCalories(key) {
+  return activitiesOn(key).reduce((n, a) => n + (a.calories || 0), 0);
+}
+
+/** Totals over a window, for the weekly review and the progress tab. */
+export function activitySummary(days = 7, endKey = todayKey()) {
+  const keys = Array.from({ length: days }, (_, i) => addDays(endKey, -i));
+  const list = state.activities.filter(a => keys.includes(a.date));
+  return {
+    count: list.length,
+    distanceM: list.reduce((n, a) => n + a.distanceM, 0),
+    movingMs: list.reduce((n, a) => n + a.movingMs, 0),
+    calories: list.reduce((n, a) => n + (a.calories || 0), 0),
+    elevationM: list.reduce((n, a) => n + (a.elevationM || 0), 0),
+    byType: list.reduce((acc, a) => {
+      acc[a.type] = (acc[a.type] || 0) + 1;
+      return acc;
+    }, {})
+  };
+}
+
+/** Every activity of one type, oldest first — for a progress chart. */
+export function activityHistory(typeId) {
+  return state.activities
+    .filter(a => a.type === typeId && a.distanceM > 0)
+    .slice()
+    .sort((a, b) => a.startedAt - b.startedAt);
 }

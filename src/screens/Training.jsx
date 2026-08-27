@@ -18,6 +18,7 @@ import { checkPRs, prLabel, suggestLoad, parseRepRange, tonnage, bestSet, epley 
 import { notesFor } from "../data/exerciseNotes.js";
 import { tapLight, celebrate, alarm } from "../lib/haptics.js";
 import PlateCalculator from "../components/PlateCalculator.jsx";
+import Activities from "../components/Activities.jsx";
 import ExerciseHistory from "../components/ExerciseHistory.jsx";
 import { t } from "../lib/i18n.js";
 
@@ -603,6 +604,7 @@ function elapsed(ms) {
 }
 
 export default function Training() {
+  const [view, setView] = useState("gym");
   const [dateKey, setDateKey] = useState(todayKey());
   const [editing, setEditing] = useState(false);
   const [plates, setPlates] = useState(null);
@@ -643,8 +645,25 @@ export default function Training() {
   const sessionTonnage = Object.values(session.ex || {}).reduce((n, rec) => n + tonnage(rec.sets), 0);
   const duration = session.startedAt ? (session.endedAt || Date.now()) - session.startedAt : 0;
 
+  if (view === "activity") {
+    return (
+      <div className="page" style={{ paddingTop: 18 }}>
+        <div className="seg" style={{ marginBottom: 18 }}>
+          <button aria-pressed={false} onClick={() => setView("gym")}>Gym</button>
+          <button aria-pressed>Activity</button>
+        </div>
+        <Activities />
+      </div>
+    );
+  }
+
   return (
     <div className="page" style={{ paddingTop: 18 }}>
+      <div className="seg" style={{ marginBottom: 18 }}>
+        <button aria-pressed onClick={() => setView("gym")}>Gym</button>
+        <button aria-pressed={false} onClick={() => setView("activity")}>Activity</button>
+      </div>
+
       <div className="row" style={{ marginBottom: 14 }}>
         <button className="btn btn-icon btn-quiet" onClick={() => setDateKey(addDays(dateKey, -1))} aria-label="Previous day">
           <ChevronLeft size={20} />
